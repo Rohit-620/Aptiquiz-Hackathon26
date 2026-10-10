@@ -254,32 +254,63 @@ function setupAudioToggle() {
 function setupQRScanner() {
   elements.btnOpenScanner.addEventListener('click', async () => {
     elements.qrScannerBox.classList.remove('hidden');
+
+    if (typeof Html5Qrcode === 'undefined') {
+      showToast('Scanner library loading... please wait 2 seconds.');
+      return;
+    }
+
     try {
+      if (state.html5QrCode) {
+        try { await state.html5QrCode.stop(); } catch(e) {}
+        state.html5QrCode = null;
+      }
+
       state.html5QrCode = new Html5Qrcode('qrReader');
-      await state.html5QrCode.start(
-        { facingMode: 'environment' },
-        {
-          fps: 10,
-          qrbox: { width: 220, height: 220 }
-        },
-        (decodedText) => {
-          // Success callback: parse URL or raw room code
-          let parsedCode = decodedText.trim();
-          if (decodedText.includes('room=')) {
+      
+      const onScanSuccess = (decodedText) => {
+        let parsedCode = decodedText.trim();
+        if (decodedText.includes('room=')) {
+          try {
             const urlObj = new URL(decodedText);
             parsedCode = urlObj.searchParams.get('room') || decodedText;
+          } catch(e) {
+            const match = decodedText.match(/room=([A-Za-z0-9]+)/);
+            if (match) parsedCode = match[1];
           }
-          elements.roomCodeInput.value = parsedCode.toUpperCase();
-          showToast(`QR Code Scanned: Room ${parsedCode.toUpperCase()}!`);
-          stopScanner();
-        },
-        (errorMessage) => {
-          // ignore scan error frames
         }
-      );
+        elements.roomCodeInput.value = parsedCode.toUpperCase();
+        showToast(`QR Scanned: Room ${parsedCode.toUpperCase()}!`);
+        playSound('correct');
+        stopScanner();
+      };
+
+      // Try environment camera first, then fall back to user webcam, then any available camera
+      try {
+        await state.html5QrCode.start(
+          { facingMode: 'environment' },
+          { fps: 15, qrbox: { width: 220, height: 220 } },
+          onScanSuccess,
+          () => {}
+        );
+      } catch (envErr) {
+        console.warn('Environment camera failed, attempting default/user camera:', envErr);
+        const cameras = await Html5Qrcode.getCameras();
+        if (cameras && cameras.length > 0) {
+          const cameraId = cameras[0].id;
+          await state.html5QrCode.start(
+            cameraId,
+            { fps: 15, qrbox: { width: 220, height: 220 } },
+            onScanSuccess,
+            () => {}
+          );
+        } else {
+          throw new Error('No video camera devices found.');
+        }
+      }
     } catch (err) {
-      console.warn('Camera access error:', err);
-      showToast('Camera permission denied or camera not found.');
+      console.error('Camera connection error:', err);
+      showToast('Camera error: Please allow camera permissions in browser.');
     }
   });
 
