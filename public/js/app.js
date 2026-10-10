@@ -453,10 +453,12 @@ function handleJoinResponse(res) {
 
 async function fetchRoomQRCode(roomCode) {
   try {
+    elements.lobbyQRContainer.classList.remove('hidden');
     const res = await fetch(`/api/qrcode/${roomCode}`);
     const data = await res.json();
     if (data.success && data.qrDataUrl) {
       elements.lobbyQRImage.src = data.qrDataUrl;
+      elements.lobbyQRImage.style.display = 'block';
     }
   } catch (err) {
     console.error('Failed to load room QR code', err);
@@ -517,6 +519,7 @@ function setupHostHandlers() {
         elements.displayRoomCode.textContent = res.roomCode;
         elements.hostLobbyControls.classList.remove('hidden');
         elements.playerWaitingNotice.classList.add('hidden');
+        fetchRoomQRCode(res.roomCode); // Auto-render QR code for host immediately
         showToast(`Room ${res.roomCode} created! Share code with competitors.`);
       }
     });
