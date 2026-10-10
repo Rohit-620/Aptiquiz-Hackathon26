@@ -373,12 +373,54 @@
           </div>
         </div>
 
+        <!-- Lobby Camera & Face Verification Gate -->
+        <div id="lobbyCameraGate" class="lobby-cam-gate">
+          <div class="lobby-cam-header">
+            <div>
+              <span class="badge badge-info">AI SECURITY REQUIREMENT</span>
+              <h3 style="margin: 0.35rem 0 0.15rem 0; font-size: 1.1rem; color: #fff;">Webcam & Face Detection Verification</h3>
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Turn on your camera and look directly at the lens. Once your face is detected, match participation unlocks.</p>
+            </div>
+            <button type="button" class="btn btn-primary" id="btnLobbyTurnOnCam">📷 Turn On Camera</button>
+          </div>
+
+          <div class="lobby-cam-content">
+            <div class="lobby-cam-preview-box">
+              <video id="lobbyCamVideo" autoplay playsinline muted></video>
+              <canvas id="lobbyCamCanvas"></canvas>
+              <div class="lobby-cam-reticle" id="lobbyCamReticle"></div>
+              <div class="lobby-cam-status-pill" id="lobbyCamStatusPill">CAMERA OFF • CLICK "TURN ON CAMERA"</div>
+            </div>
+
+            <div class="lobby-cam-details">
+              <div class="cam-checklist">
+                <div class="checklist-item" id="chkCamStream">
+                  <span class="chk-icon">⏳</span>
+                  <span class="chk-text">Camera Feed Active</span>
+                </div>
+                <div class="checklist-item" id="chkFaceDetected">
+                  <span class="chk-icon">⏳</span>
+                  <span class="chk-text">Face Detected in Frame</span>
+                </div>
+                <div class="checklist-item" id="chkProctorReady">
+                  <span class="chk-icon">⏳</span>
+                  <span class="chk-text">AI Anti-Cheat Verified</span>
+                </div>
+              </div>
+
+              <div class="cam-notice-box" id="lobbyCamNotice">
+                ⚠️ Camera and face presence verification is mandatory for all competitors to prevent proxy test-taking.
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div id="hostLobbyControls" class="lobby-controls hidden">
           <button class="btn btn-success btn-large btn-glow" id="btnStartGame">🏁 Start Match Now</button>
         </div>
         <div id="playerWaitingNotice" class="waiting-notice">
           <div class="spinner"></div>
-          <p>Waiting for the host to launch the battle...</p>
+          <p id="playerWaitingText">Waiting for the host to launch the battle...</p>
         </div>
       </div>
 

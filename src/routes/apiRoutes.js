@@ -95,10 +95,16 @@ router.get('/passport/:nickname', async (req, res) => {
     );
 
     const totalGames = history.length;
-    const totalScore = history.reduce((sum, h) => sum + h.final_score, 0);
-    const bestScore = history.reduce((max, h) => Math.max(max, h.final_score), 0);
+    const totalScore = history.reduce((sum, h) => sum + (Number(h.final_score) || 0), 0);
+    const bestScore = history.reduce((max, h) => Math.max(max, Number(h.final_score) || 0), 0);
     const avgAccuracy = totalGames > 0
-      ? Math.round(history.reduce((sum, h) => sum + (h.correct_count / (h.total_questions || 8) * 100), 0) / totalGames)
+      ? Math.round(
+          history.reduce((sum, h) => {
+            const totalQ = Number(h.total_questions) || 8;
+            const correctQ = Number(h.correct_count) || 0;
+            return sum + (totalQ > 0 ? (correctQ / totalQ) * 100 : 0);
+          }, 0) / totalGames
+        )
       : 0;
 
     res.json({
@@ -108,7 +114,7 @@ router.get('/passport/:nickname', async (req, res) => {
         totalGames,
         totalScore,
         bestScore,
-        avgAccuracy,
+        avgAccuracy: isNaN(avgAccuracy) ? 0 : avgAccuracy,
         recentGames: history
       }
     });

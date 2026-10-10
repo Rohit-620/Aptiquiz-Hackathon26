@@ -1120,6 +1120,156 @@ button, input, select {
 }
 
 /* ==========================================================================
+   Lobby Camera & Face Detection Gate
+   ========================================================================== */
+.lobby-cam-gate {
+  background: rgba(13, 20, 37, 0.75);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(25, 230, 242, 0.3);
+  border-radius: var(--radius-card);
+  padding: 1.5rem;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.3s;
+}
+
+.lobby-cam-gate.verified {
+  border-color: rgba(16, 185, 129, 0.6);
+  box-shadow: 0 0 25px rgba(16, 185, 129, 0.25);
+}
+
+.lobby-cam-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lobby-cam-content {
+  display: flex;
+  gap: 1.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.lobby-cam-preview-box {
+  position: relative;
+  width: 220px;
+  height: 165px;
+  background: #000;
+  border-radius: 12px;
+  border: 2px solid rgba(25, 230, 242, 0.4);
+  overflow: hidden;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+}
+
+.lobby-cam-preview-box video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.lobby-cam-preview-box canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.lobby-cam-reticle {
+  position: absolute;
+  top: 15px;
+  left: 25px;
+  right: 25px;
+  bottom: 15px;
+  border: 2px dashed rgba(25, 230, 242, 0.45);
+  border-radius: 50% 50% 45% 45%;
+  pointer-events: none;
+  transition: all 0.3s ease;
+}
+
+.lobby-cam-reticle.face-locked {
+  border-color: #10b981;
+  border-style: solid;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.45);
+}
+
+.lobby-cam-status-pill {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(239, 68, 68, 0.85);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+  transition: all 0.25s ease;
+}
+
+.lobby-cam-status-pill.success {
+  background: rgba(16, 185, 129, 0.9);
+}
+
+.lobby-cam-details {
+  flex: 1;
+  min-width: 240px;
+}
+
+.cam-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: all 0.2s ease;
+}
+
+.checklist-item.passed {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #10b981;
+}
+
+.cam-notice-box {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+  font-size: 0.82rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 8px;
+  line-height: 1.4;
+}
+
+.cam-notice-box.success {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #6ee7b7;
+}
+
+/* ==========================================================================
    Live Quiz Arena & Anti-Cheat Feed
    ========================================================================== */
 .arena-top-bar {

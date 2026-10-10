@@ -248,13 +248,18 @@ class RoomManager {
 
     const activePlayers = Array.from(room.players.values()).map(p => ({
       nickname: p.nickname,
+      collegeId: p.collegeId,
       collegeName: p.collegeName,
       teamName: p.teamName,
       score: p.score,
-      correctCount: p.correctAnswersCount,
-      totalCount: p.totalAnswersCount,
-      accuracy: p.totalAnswersCount > 0 ? Math.round((p.correctCount / p.totalAnswersCount) * 100) : 0,
-      avgSpeedMs: p.totalAnswersCount > 0 ? Math.round(p.totalTimeMs / p.totalAnswersCount) : 0,
+      correctCount: p.correctAnswersCount || 0,
+      totalCount: p.totalAnswersCount || 0,
+      accuracy: (p.totalAnswersCount && p.totalAnswersCount > 0)
+        ? Math.round(((p.correctAnswersCount || 0) / p.totalAnswersCount) * 100)
+        : 0,
+      avgSpeedMs: (p.totalAnswersCount && p.totalAnswersCount > 0)
+        ? Math.round((p.totalTimeMs || 0) / p.totalAnswersCount)
+        : 0,
       isOnline: p.isOnline
     }));
 
@@ -323,17 +328,18 @@ class RoomManager {
     for (const player of leaderboard) {
       try {
         await db.query(
-          `INSERT INTO game_results (room_id, nickname, college_id, final_score, final_rank, correct_count, total_questions, avg_speed_ms)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO game_results (room_id, player_id, nickname, college_id, final_score, final_rank, correct_count, total_questions, avg_speed_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            room.questionSetId,
+            room.questionSetId || 1,
+            null,
             player.nickname,
-            null, // college id
-            player.score,
-            player.rank,
-            player.correctCount,
-            room.questions.length,
-            player.avgSpeedMs
+            player.collegeId || null,
+            player.score || 0,
+            player.rank || 1,
+            player.correctCount || 0,
+            room.questions ? room.questions.length : 8,
+            player.avgSpeedMs || 0
           ]
         );
       } catch (err) {

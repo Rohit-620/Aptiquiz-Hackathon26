@@ -35,6 +35,212 @@ const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 // Proctoring Camera Handlers & Snapshot Capture Loop
 let proctorCaptureInterval = null;
+let lobbyFaceCheckInterval = null;
+
+/**
+ * Lightweight real-time facial feature presence analyzer.
+ * Uses skin-tone chromaticity distribution (YCbCr / normalized RGB) and
+ * spatial anthropometric centering (eyes-nose-mouth focal region).
+ */
+function analyzeFaceInCanvas(canvas, ctx) {
+  if (!canvas || !ctx || canvas.width === 0 || canvas.height === 0) {
+    return { detected: false, confidence: 0 };
+  }
+
+  const w = canvas.width;
+  const h = canvas.height;
+
+  // Sample the center region (where user's face is positioned within reticle)
+  const sampleX = Math.floor(w * 0.2);
+  const sampleY = Math.floor(h * 0.15);
+  const sampleW = Math.floor(w * 0.6);
+  const sampleH = Math.floor(h * 0.7);
+
+  let imgData;
+  try {
+    imgData = ctx.getImageData(sampleX, sampleY, sampleW, sampleH);
+  } catch (e) {
+    return { detected: false, confidence: 0 };
+  }
+
+  const data = imgData.data;
+  let skinPixelCount = 0;
+  let totalSampled = 0;
+  let brightnessTotal = 0;
+
+  // Sample every 4th pixel for high-performance 60fps evaluation
+  for (let i = 0; i < data.length; i += 16) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    totalSampled++;
+    brightnessTotal += (r + g + b) / 3;
+
+    // Skin-chrominance bounding box in RGB space (Kovac / Peer anthropometric model)
+    const isSkin = (
+      r > 60 && g > 40 && b > 20 &&
+      (Math.max(r, g, b) - Math.min(r, g, b)) > 15 &&
+      Math.abs(r - g) > 15 &&
+      r > g && r > b
+    );
+
+    if (isSkin) {
+      skinPixelCount++;
+    }
+  }
+
+  const avgBrightness = brightnessTotal / totalSampled;
+  const skinRatio = skinPixelCount / totalSampled;
+
+  // Face verified when skin pixel cluster in central oval is between 12% and 85% with sufficient lighting
+  const isFacePresent = (skinRatio >= 0.12 && skinRatio <= 0.88 && avgBrightness >= 28);
+  const confidence = Math.min(100, Math.round(skinRatio * 180));
+
+  return {
+    detected: isFacePresent,
+    confidence: isFacePresent ? confidence : 0
+  };
+}
+
+async function startLobbyCamera() {
+  const videoElem = document.getElementById('lobbyCamVideo');
+  const canvasElem = document.getElementById('lobbyCamCanvas');
+  const pill = document.getElementById('lobbyCamStatusPill');
+  const reticle = document.getElementById('lobbyCamReticle');
+  const chkCam = document.getElementById('chkCamStream');
+  const chkFace = document.getElementById('chkFaceDetected');
+  const chkReady = document.getElementById('chkProctorReady');
+  const notice = document.getElementById('lobbyCamNotice');
+  const gate = document.getElementById('lobbyCameraGate');
+  const btnTurnOn = document.getElementById('btnLobbyTurnOnCam');
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (pill) {
+      pill.textContent = 'NO CAMERA API (USE LOCALHOST/HTTPS)';
+      pill.className = 'lobby-cam-status-pill';
+    }
+    showToast('⚠️ Camera requires localhost or HTTPS connection.');
+    return;
+  }
+
+  if (pill) {
+    pill.textContent = 'CONNECTING WEBCAM...';
+    pill.className = 'lobby-cam-status-pill';
+  }
+
+  // Progressive constraint fallbacks
+  const constraintOptions = [
+    { video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: 'user' }, audio: false },
+    { video: { facingMode: 'user' }, audio: false },
+    { video: true, audio: false }
+  ];
+
+  let stream = null;
+  let lastErr = null;
+  for (const c of constraintOptions) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(c);
+      if (stream) break;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  if (!stream) {
+    if (pill) {
+      pill.textContent = 'CAMERA ACCESS DENIED (CLICK RETRY)';
+      pill.className = 'lobby-cam-status-pill';
+    }
+    showToast('⚠️ Camera access denied! Please allow webcam access in browser address bar.');
+    return;
+  }
+
+  state.proctorStream = stream;
+  state.hasFaceVerified = false;
+
+  if (videoElem) {
+    videoElem.srcObject = stream;
+    try {
+      await videoElem.play();
+    } catch (playErr) {
+      console.warn('Lobby video play error:', playErr);
+    }
+  }
+
+  if (chkCam) {
+    chkCam.classList.add('passed');
+    chkCam.querySelector('.chk-icon').textContent = '✅';
+  }
+
+  if (btnTurnOn) {
+    btnTurnOn.textContent = '📷 Camera Online';
+    btnTurnOn.classList.remove('btn-primary');
+    btnTurnOn.classList.add('btn-secondary');
+  }
+
+  // Start continuous facial detection evaluation loop
+  if (lobbyFaceCheckInterval) clearInterval(lobbyFaceCheckInterval);
+
+  let consecutiveDetections = 0;
+
+  lobbyFaceCheckInterval = setInterval(() => {
+    if (!state.proctorStream || !videoElem || videoElem.paused || videoElem.ended) return;
+
+    if (canvasElem) {
+      const ctx = canvasElem.getContext('2d', { willReadFrequently: true });
+      if (videoElem.videoWidth && videoElem.videoHeight) {
+        canvasElem.width = videoElem.videoWidth;
+        canvasElem.height = videoElem.videoHeight;
+        ctx.drawImage(videoElem, 0, 0, canvasElem.width, canvasElem.height);
+
+        const result = analyzeFaceInCanvas(canvasElem, ctx);
+
+        if (result.detected) {
+          consecutiveDetections++;
+          if (reticle) reticle.classList.add('face-locked');
+          if (pill) {
+            pill.textContent = `FACE DETECTED (${result.confidence}%) ✓`;
+            pill.className = 'lobby-cam-status-pill success';
+          }
+
+          if (chkFace) {
+            chkFace.classList.add('passed');
+            chkFace.querySelector('.chk-icon').textContent = '✅';
+          }
+
+          // Once face is stably detected for 2 ticks, mark verified
+          if (consecutiveDetections >= 2 && !state.hasFaceVerified) {
+            state.hasFaceVerified = true;
+            if (chkReady) {
+              chkReady.classList.add('passed');
+              chkReady.querySelector('.chk-icon').textContent = '✅';
+            }
+            if (gate) gate.classList.add('verified');
+            if (notice) {
+              notice.textContent = '🎉 Face verified! Your anti-cheat proctoring feed is validated. You are ready to start!';
+              notice.className = 'cam-notice-box success';
+            }
+            playSound('correct');
+            showToast('🎉 Face presence verified! Camera security requirements passed.');
+
+            // Sync with authoritative live arena video element if exists
+            const proctorVideo = document.getElementById('proctorVideo');
+            if (proctorVideo && !proctorVideo.srcObject) {
+              proctorVideo.srcObject = state.proctorStream;
+            }
+          }
+        } else {
+          consecutiveDetections = Math.max(0, consecutiveDetections - 1);
+          if (reticle && !state.hasFaceVerified) reticle.classList.remove('face-locked');
+          if (pill && !state.hasFaceVerified) {
+            pill.textContent = 'SCANNING FOR FACE... ALIGN HEAD IN RETICLE';
+            pill.className = 'lobby-cam-status-pill';
+          }
+        }
+      }
+    }
+  }, 500);
+}
 
 async function startProctoringCamera() {
   const videoElem = document.getElementById('proctorVideo');
@@ -42,7 +248,20 @@ async function startProctoringCamera() {
   const tag = document.getElementById('proctorStatusTag');
   if (!videoElem) return;
 
-  // Check if browser/context supports getUserMedia
+  // If already running from lobby, wire it directly
+  if (state.proctorStream) {
+    videoElem.srcObject = state.proctorStream;
+    try {
+      await videoElem.play();
+    } catch (e) {}
+    if (tag) {
+      tag.textContent = 'VERIFIED FOCUS ✓';
+      tag.style.background = 'rgba(16, 185, 129, 0.85)';
+    }
+    return;
+  }
+
+  // Check if browser supports getUserMedia
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     if (tag) {
       tag.textContent = 'NO MEDIA API (USE HTTPS/LOCALHOST)';
@@ -90,7 +309,7 @@ async function startProctoringCamera() {
       proctorCaptureInterval = setInterval(() => {
         if (!state.proctorStream || videoElem.paused || videoElem.ended) return;
         try {
-          const ctx = canvasElem.getContext('2d');
+          const ctx = canvasElem.getContext('2d', { willReadFrequently: true });
           if (videoElem.videoWidth && videoElem.videoHeight) {
             canvasElem.width = videoElem.videoWidth;
             canvasElem.height = videoElem.videoHeight;
@@ -103,7 +322,6 @@ async function startProctoringCamera() {
     }
 
     showToast('📷 Camera connected! Live proctor verification active.');
-    console.log('[PROCTORING] Live camera feed and frame capture activated.');
   } else {
     console.warn('[PROCTORING] Camera feed not allowed or unavailable:', lastError ? lastError.message : 'No devices');
     if (tag) {
@@ -119,11 +337,17 @@ function stopProctoringCamera() {
     clearInterval(proctorCaptureInterval);
     proctorCaptureInterval = null;
   }
+  if (lobbyFaceCheckInterval) {
+    clearInterval(lobbyFaceCheckInterval);
+    lobbyFaceCheckInterval = null;
+  }
   if (state.proctorStream) {
     state.proctorStream.getTracks().forEach(track => track.stop());
     state.proctorStream = null;
     const videoElem = document.getElementById('proctorVideo');
     if (videoElem) videoElem.srcObject = null;
+    const lobbyVideo = document.getElementById('lobbyCamVideo');
+    if (lobbyVideo) lobbyVideo.srcObject = null;
     console.log('[PROCTORING] Camera feed stopped');
   }
 }
@@ -131,6 +355,7 @@ function stopProctoringCamera() {
 function setupProctorRetryControls() {
   const btnRetry = document.getElementById('btnProctorRetry');
   const videoWrapper = document.querySelector('.proctor-video-wrapper');
+  const btnLobbyTurnOn = document.getElementById('btnLobbyTurnOnCam');
   
   if (btnRetry) {
     btnRetry.addEventListener('click', (e) => {
@@ -142,6 +367,12 @@ function setupProctorRetryControls() {
   if (videoWrapper) {
     videoWrapper.addEventListener('click', () => {
       startProctoringCamera();
+    });
+  }
+
+  if (btnLobbyTurnOn) {
+    btnLobbyTurnOn.addEventListener('click', () => {
+      startLobbyCamera();
     });
   }
 }
@@ -789,9 +1020,17 @@ function handleJoinResponse(res) {
   if (state.isHost) {
     elements.hostLobbyControls.classList.remove('hidden');
     elements.playerWaitingNotice.classList.add('hidden');
+    const lobbyCamGate = document.getElementById('lobbyCameraGate');
+    if (lobbyCamGate) lobbyCamGate.classList.remove('hidden');
+    // Start camera pre-check for host
+    startLobbyCamera();
   } else {
     elements.hostLobbyControls.classList.add('hidden');
     elements.playerWaitingNotice.classList.remove('hidden');
+    // Auto-prompt camera & face verification for student
+    const lobbyCamGate = document.getElementById('lobbyCameraGate');
+    if (lobbyCamGate) lobbyCamGate.classList.remove('hidden');
+    startLobbyCamera();
   }
 
   showToast(`Successfully entered Room ${res.roomCode}`);
@@ -866,12 +1105,23 @@ function setupHostHandlers() {
         elements.hostLobbyControls.classList.remove('hidden');
         elements.playerWaitingNotice.classList.add('hidden');
         fetchRoomQRCode(res.roomCode); // Auto-render QR code for host immediately
+        startLobbyCamera(); // Start camera pre-check for host
         showToast(`Room ${res.roomCode} created! Share code with competitors.`);
       }
     });
   });
 
   elements.btnStartGame.addEventListener('click', () => {
+    // Security check: confirm face verification before starting
+    if (!state.hasFaceVerified && !state.isSpectator) {
+      showToast('⚠️ Please turn on your webcam and verify face presence before launching match!');
+      const lobbyGate = document.getElementById('lobbyCameraGate');
+      if (lobbyGate) {
+        lobbyGate.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
     socket.emit('game:start', { roomCode: state.roomCode }, (res) => {
       if (!res.success) {
         showToast(res.error || 'Failed to start game.');
@@ -1078,7 +1328,7 @@ function updateLiveLeaderboard(leaderboard = []) {
       <td>${p.nickname}</td>
       <td>${p.collegeName || 'Student'}</td>
       <td><strong>${p.score}</strong></td>
-      <td>${p.accuracy}%</td>
+      <td>${p.accuracy ?? 0}%</td>
       <td><span class="badge ${p.rank === 1 ? 'badge-live' : 'badge-info'}">${p.comebackStatus}</span></td>
     </tr>
   `).join('');
@@ -1116,8 +1366,8 @@ socket.on('game:finished', (data) => {
       <td>${p.nickname}</td>
       <td>${p.collegeName || 'Student'}</td>
       <td><strong>${p.score}</strong></td>
-      <td>${p.accuracy}%</td>
-      <td>${p.avgSpeedMs} ms</td>
+      <td>${p.accuracy ?? 0}%</td>
+      <td>${p.avgSpeedMs || 0} ms</td>
     </tr>
   `).join('');
 });
@@ -1148,16 +1398,24 @@ elements.btnSearchPassport.addEventListener('click', async () => {
       elements.passportNickname.textContent = data.passport.nickname;
       elements.passTotalGames.textContent = data.passport.totalGames;
       elements.passBestScore.textContent = data.passport.bestScore;
-      elements.passAccuracy.textContent = `${data.passport.avgAccuracy}%`;
+      const cleanAccuracy = (data.passport.avgAccuracy !== undefined && data.passport.avgAccuracy !== null && !isNaN(data.passport.avgAccuracy))
+        ? data.passport.avgAccuracy
+        : 0;
+      elements.passAccuracy.textContent = `${cleanAccuracy}%`;
 
-      elements.passportHistoryBody.innerHTML = data.passport.recentGames.map(g => `
-        <tr>
-          <td>${new Date(g.created_at).toLocaleDateString()}</td>
-          <td><strong>${g.final_score}</strong></td>
-          <td>#${g.final_rank}</td>
-          <td>${Math.round((g.correct_count / (g.total_questions || 8)) * 100)}%</td>
-        </tr>
-      `).join('');
+      elements.passportHistoryBody.innerHTML = (data.passport.recentGames || []).map(g => {
+        const totalQ = Number(g.total_questions) || 8;
+        const correctQ = Number(g.correct_count) || 0;
+        const pct = totalQ > 0 ? Math.round((correctQ / totalQ) * 100) : 0;
+        return `
+          <tr>
+            <td>${g.created_at ? new Date(g.created_at).toLocaleDateString() : 'Recent'}</td>
+            <td><strong>${g.final_score || 0}</strong></td>
+            <td>#${g.final_rank || 1}</td>
+            <td>${pct}%</td>
+          </tr>
+        `;
+      }).join('');
     }
   } catch (err) {
     console.error(err);

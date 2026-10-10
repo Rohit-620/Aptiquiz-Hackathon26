@@ -247,6 +247,10 @@ async function query(sql, params = []) {
   }
 
   if (cleanSql.startsWith('select') && cleanSql.includes('from game_results')) {
+    if (cleanSql.includes('where nickname =') && params.length > 0) {
+      const targetNickname = String(params[0]).toLowerCase();
+      return memoryStore.game_results.filter(g => (g.nickname || '').toLowerCase() === targetNickname);
+    }
     return memoryStore.game_results;
   }
 
