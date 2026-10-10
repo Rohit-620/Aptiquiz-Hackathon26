@@ -315,6 +315,39 @@ function setupQRScanner() {
   });
 
   elements.btnCloseScanner.addEventListener('click', stopScanner);
+
+  // File upload scanner fallback
+  const qrFileInput = document.getElementById('qrFileInput');
+  if (qrFileInput) {
+    qrFileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      try {
+        if (!state.html5QrCode) {
+          state.html5QrCode = new Html5Qrcode('qrReader');
+        }
+        const decodedText = await state.html5QrCode.scanFile(file, true);
+        let parsedCode = decodedText.trim();
+        if (decodedText.includes('room=')) {
+          try {
+            const urlObj = new URL(decodedText);
+            parsedCode = urlObj.searchParams.get('room') || decodedText;
+          } catch(err) {
+            const match = decodedText.match(/room=([A-Za-z0-9]+)/);
+            if (match) parsedCode = match[1];
+          }
+        }
+        elements.roomCodeInput.value = parsedCode.toUpperCase();
+        showToast(`QR Decoded: Room ${parsedCode.toUpperCase()}!`);
+        playSound('correct');
+        stopScanner();
+      } catch (err) {
+        console.error('File scan error:', err);
+        showToast('Could not read QR from selected image.');
+      }
+    });
+  }
 }
 
 function stopScanner() {
