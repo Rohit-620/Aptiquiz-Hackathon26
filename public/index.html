@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AptiQuiz — The Real-Time Multiplayer Aptitude Arena</title>
+  <meta name="description" content="High-stakes, real-time multiplayer aptitude quiz arena supporting up to 50 concurrent players with live comeback meter, college rankings, and esports thrills.">
+  <link rel="stylesheet" href="/css/style.css">
+  <!-- Chart.js for analytics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Socket.IO Client -->
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <!-- Navigation Header -->
+  <header class="app-header">
+    <div class="logo-container">
+      <div class="logo-icon">⚡</div>
+      <div class="logo-text">
+        <span class="logo-main">AptiQuiz</span>
+        <span class="logo-sub">Multiplayer Arena</span>
+      </div>
+    </div>
+
+    <nav class="nav-links">
+      <button class="nav-btn active" data-tab="arena-tab">🎮 Arena</button>
+      <button class="nav-btn" data-tab="host-tab">👑 Host Room</button>
+      <button class="nav-btn" data-tab="passport-tab">📜 Skill Passport</button>
+      <button class="nav-btn" data-tab="college-tab">🏛️ College League</button>
+      <button class="nav-btn" data-tab="tournament-tab">🏆 Tournaments</button>
+      <button class="nav-btn" data-tab="daily-tab">🔥 Daily Challenge</button>
+    </nav>
+
+    <div class="user-badge" id="headerUserBadge">
+      <span class="user-avatar">👤</span>
+      <span class="user-name" id="navNickname">Guest Player</span>
+    </div>
+  </header>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Main Application Body -->
+  <main class="main-content">
+
+    <!-- VIEW 1: ARENA / LOBBY / LIVE GAME -->
+    <section id="arena-tab" class="tab-pane active">
+      <!-- 1.A Join Box (Default) -->
+      <div id="joinContainer" class="hero-card">
+        <div class="hero-badge">⚡ Real-Time Synchronized 50-Player Competition</div>
+        <h1 class="hero-title">Step into the Aptitude Arena</h1>
+        <p class="hero-subtitle">Compete live with top students across colleges. Fast answers score higher. Server-authoritative anti-cheat active.</p>
+
+        <form id="joinForm" class="join-form">
+          <div class="form-group">
+            <label for="roomCodeInput">Room Code</label>
+            <input type="text" id="roomCodeInput" placeholder="e.g. 8K2M9Q" maxlength="10" required autocomplete="off">
+          </div>
+
+          <div class="form-group">
+            <label for="nicknameInput">Your Nickname</label>
+            <input type="text" id="nicknameInput" placeholder="e.g. AceCoder" maxlength="20" required autocomplete="off">
+          </div>
+
+          <div class="form-group">
+            <label for="collegeSelect">College / University</label>
+            <select id="collegeSelect" required>
+              <option value="">Loading colleges...</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="teamInput">Team Name (Optional)</label>
+            <input type="text" id="teamInput" placeholder="e.g. Team Alpha" maxlength="30">
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-glow" id="btnJoinRoom">🚀 Enter Arena</button>
+            <button type="button" class="btn btn-secondary" id="btnJoinSpectator">👁️ Spectate</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- 1.B Multiplayer Lobby -->
+      <div id="lobbyContainer" class="lobby-card hidden">
+        <div class="lobby-header">
+          <div>
+            <span class="badge badge-live">LIVE LOBBY</span>
+            <h2>Room Code: <span id="displayRoomCode" class="room-code-badge">------</span></h2>
+            <p>Share this code with up to 50 players to join the synchronized match!</p>
+          </div>
+          <button class="btn btn-outline" id="btnCopyRoomCode">📋 Copy Code</button>
+        </div>
+
+        <div class="lobby-stats">
+          <div class="stat-box">
+            <span class="stat-num" id="lobbyPlayerCount">0</span>
+            <span class="stat-label">Players Connected</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-num">50</span>
+            <span class="stat-label">Room Capacity</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-num">15s</span>
+            <span class="stat-label">Round Speed</span>
+          </div>
+        </div>
+
+        <div class="players-section">
+          <h3>Connected Competitors</h3>
+          <div id="lobbyPlayersList" class="players-grid">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <div id="hostLobbyControls" class="lobby-controls hidden">
+          <button class="btn btn-success btn-large btn-glow" id="btnStartGame">🏁 Start Match Now</button>
+        </div>
+        <div id="playerWaitingNotice" class="waiting-notice">
+          <div class="spinner"></div>
+          <p>Waiting for the host to launch the battle...</p>
+        </div>
+      </div>
+
+      <!-- 1.C Live Quiz Arena -->
+      <div id="liveArenaContainer" class="live-arena hidden">
+        <div class="arena-top-bar">
+          <div class="question-tracker">
+            <span class="badge badge-info">QUESTION</span>
+            <span id="qCurrentNum" class="q-num">1</span> / <span id="qTotalNum">8</span>
+          </div>
+
+          <div class="timer-container">
+            <div class="timer-circle" id="timerCircle">
+              <span id="timerSeconds">15</span>
+            </div>
+          </div>
+
+          <div class="player-live-score">
+            <span class="score-label">Your Score:</span>
+            <span id="playerCurrentScore" class="score-value">0</span>
+          </div>
+        </div>
+
+        <!-- Power-Ups Bar -->
+        <div class="powerups-bar" id="powerupsBar">
+          <button class="powerup-btn" id="btnPowerup5050" title="Eliminate two wrong options">
+            <span>🎯 50:50</span>
+          </button>
+          <button class="powerup-btn" id="btnPowerupDouble" title="Double your points for this round">
+            <span>⚡ 2x Points</span>
+          </button>
+        </div>
+
+        <!-- Question Box -->
+        <div class="question-card">
+          <div class="question-topic-badge" id="questionTopic">Quantitative Reasoning</div>
+          <h2 class="question-prompt" id="questionPrompt">Loading question prompt...</h2>
+
+          <!-- 4 Answer Options -->
+          <div class="options-grid" id="optionsGrid">
+            <button class="option-btn" data-option="A">
+              <span class="opt-key">A</span>
+              <span class="opt-text" id="optTextA">Option A</span>
+            </button>
+            <button class="option-btn" data-option="B">
+              <span class="opt-key">B</span>
+              <span class="opt-text" id="optTextB">Option B</span>
+            </button>
+            <button class="option-btn" data-option="C">
+              <span class="opt-key">C</span>
+              <span class="opt-text" id="optTextC">Option C</span>
+            </button>
+            <button class="option-btn" data-option="D">
+              <span class="opt-key">D</span>
+              <span class="opt-text" id="optTextD">Option D</span>
+            </button>
+          </div>
+
+          <div id="answerStatusMessage" class="answer-status hidden">
+            Answer submitted! Locking in...
+          </div>
+        </div>
+
+        <!-- Live Question Reveal Box (Shown between questions) -->
+        <div id="roundRevealBox" class="round-reveal-card hidden">
+          <div class="reveal-header">
+            <span class="badge" id="revealResultBadge">CORRECT</span>
+            <h3>Correct Answer: Option <span id="revealCorrectKey">B</span></h3>
+          </div>
+          <p id="revealExplanation" class="reveal-explanation"></p>
+
+          <div class="live-insights-grid">
+            <div class="insight-item">
+              <span class="insight-label">Class Accuracy</span>
+              <span class="insight-val" id="insightAccuracy">0%</span>
+            </div>
+            <div class="insight-item">
+              <span class="insight-label">Total Answers Recorded</span>
+              <span class="insight-val" id="insightResponses">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Round Leaderboard with Comeback Meter -->
+        <div class="live-leaderboard-section">
+          <h3>⚡ Live Leaderboard & Comeback Surge</h3>
+          <div class="table-responsive">
+            <table class="styled-table" id="liveLeaderboardTable">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Player</th>
+                  <th>College</th>
+                  <th>Score</th>
+                  <th>Accuracy</th>
+                  <th>Comeback Status</th>
+                </tr>
+              </thead>
+              <tbody id="liveLeaderboardBody">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1.D Spectacular Final Results Screen -->
+      <div id="finalResultsContainer" class="final-results-card hidden">
+        <div class="results-trophy">🏆</div>
+        <h1 class="results-title">Match Completed!</h1>
+        <p class="results-subtitle">All rounds verified by server-authoritative scoring.</p>
+
+        <div class="winner-podium" id="winnerPodium">
+          <!-- Winner card -->
+        </div>
+
+        <div class="results-table-container">
+          <h3>Official Final Standings</h3>
+          <table class="styled-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Player</th>
+                <th>College</th>
+                <th>Final Score</th>
+                <th>Accuracy</th>
+                <th>Avg Speed</th>
+              </tr>
+            </thead>
+            <tbody id="finalStandingsBody">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="final-actions">
+          <button class="btn btn-primary" id="btnPlayAgain">🔄 Play Another Match</button>
+          <button class="btn btn-secondary" id="btnExportCSV">📥 Download Match CSV</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 2: HOST DASHBOARD -->
+    <section id="host-tab" class="tab-pane">
+      <div class="card">
+        <h2>👑 Host & Game Director Dashboard</h2>
+        <p>Configure matches, choose question sets, or generate fresh aptitude questions with AI.</p>
+
+        <div class="host-grid">
+          <!-- Room Configuration -->
+          <div class="sub-card">
+            <h3>🎮 Create New Room</h3>
+            <form id="hostCreateRoomForm">
+              <div class="form-group">
+                <label>Question Bank</label>
+                <select id="hostQuestionSetSelect">
+                  <option value="1">All-Round Aptitude Blitz (Speed & Logic)</option>
+                  <option value="2">Quantitative Aptitude Masterclass</option>
+                  <option value="3">Logical Reasoning Challenge</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>Game Mode</label>
+                <select id="hostGameMode">
+                  <option value="standard">Standard Free-For-All (50 Players)</option>
+                  <option value="team">Team Battle Mode (College Squads)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>Round Duration</label>
+                <select id="hostRoundDuration">
+                  <option value="15">15 Seconds (Blitz)</option>
+                  <option value="20">20 Seconds (Standard)</option>
+                  <option value="10">10 Seconds (Supersonic)</option>
+                </select>
+              </div>
+
+              <div class="form-group-checkbox">
+                <input type="checkbox" id="hostPowerups" checked>
+                <label for="hostPowerups">Enable Power-Ups (50:50, 2x Points)</label>
+              </div>
+
+              <button type="submit" class="btn btn-primary btn-glow" style="width: 100%; margin-top: 1rem;">
+                🚀 Launch Room Lobby
+              </button>
+            </form>
+          </div>
+
+          <!-- AI Question Generator -->
+          <div class="sub-card">
+            <h3>🤖 AI Aptitude Question Generator</h3>
+            <p>Generate fresh, verified aptitude problems instantly.</p>
+            <form id="aiGenerateForm">
+              <div class="form-group">
+                <label>Topic</label>
+                <select id="aiTopicSelect">
+                  <option value="Quantitative">Quantitative Reasoning</option>
+                  <option value="Logical Reasoning">Logical Deduction</option>
+                  <option value="Verbal Ability">Verbal & Vocabulary</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>Difficulty</label>
+                <select id="aiDifficultySelect">
+                  <option value="easy">Easy</option>
+                  <option value="medium" selected>Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>Number of Questions</label>
+                <input type="number" id="aiCountInput" value="3" min="1" max="5">
+              </div>
+
+              <button type="submit" class="btn btn-secondary" id="btnRunAIGenerator" style="width: 100%;">
+                ⚡ Generate Questions
+              </button>
+            </form>
+
+            <div id="aiGeneratedPreview" class="ai-preview hidden">
+              <h4>Generated Preview (Quality Verified ✓)</h4>
+              <div id="aiPreviewList"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 3: SKILL PASSPORT -->
+    <section id="passport-tab" class="tab-pane">
+      <div class="card">
+        <h2>📜 Student Skill Passport</h2>
+        <p>Your persistent competitive aptitude credential, verified accuracy, and improvement trend.</p>
+
+        <div class="passport-search">
+          <input type="text" id="passportSearchInput" placeholder="Enter nickname to view passport...">
+          <button class="btn btn-primary" id="btnSearchPassport">Lookup Profile</button>
+        </div>
+
+        <div class="passport-card" id="passportDisplayCard">
+          <div class="passport-header">
+            <div class="passport-avatar">🎓</div>
+            <div>
+              <h2 id="passportNickname">Arjun</h2>
+              <span class="badge badge-success">Verified Competitor</span>
+            </div>
+          </div>
+
+          <div class="passport-stats-grid">
+            <div class="stat-box">
+              <span class="stat-num" id="passTotalGames">12</span>
+              <span class="stat-label">Matches Completed</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-num" id="passBestScore">6,200</span>
+              <span class="stat-label">Personal Best</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-num" id="passAccuracy">84%</span>
+              <span class="stat-label">Average Accuracy</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-num">Rank #1</span>
+              <span class="stat-label">College Standing</span>
+            </div>
+          </div>
+
+          <h3 style="margin-top: 1.5rem;">Recent Match History</h3>
+          <table class="styled-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Score</th>
+                <th>Rank</th>
+                <th>Accuracy</th>
+              </tr>
+            </thead>
+            <tbody id="passportHistoryBody">
+              <tr>
+                <td>Today</td>
+                <td>5,400</td>
+                <td>#1</td>
+                <td>88%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 4: COLLEGE LEAGUE -->
+    <section id="college-tab" class="tab-pane">
+      <div class="card">
+        <h2>🏛️ Inter-Collegiate Aptitude League</h2>
+        <p>Rankings calculated in real-time from verified completed matches. Formula: Composite Rating = Avg Score + (Participants × 50) + (Accuracy × 10).</p>
+
+        <div class="table-responsive">
+          <table class="styled-table" id="collegeLeagueTable">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>College / Institute</th>
+                <th>Code</th>
+                <th>Active Players</th>
+                <th>Avg Score</th>
+                <th>Accuracy</th>
+                <th>League Rating</th>
+              </tr>
+            </thead>
+            <tbody id="collegeLeagueBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 5: TOURNAMENTS -->
+    <section id="tournament-tab" class="tab-pane">
+      <div class="card">
+        <h2>🏆 Multi-Round Aptitude Championship</h2>
+        <p>Tournament progression: Qualifiers ➔ Semi-Finals ➔ Grand Finale.</p>
+
+        <div class="tournament-bracket">
+          <div class="bracket-round">
+            <span class="badge badge-info">STAGE 1: QUALIFIERS</span>
+            <div class="bracket-card active">
+              <h4>Top 16 Qualifiers</h4>
+              <p>Top scorers advance to the semifinals.</p>
+            </div>
+          </div>
+
+          <div class="bracket-arrow">➔</div>
+
+          <div class="bracket-round">
+            <span class="badge badge-warning">STAGE 2: SEMI-FINALS</span>
+            <div class="bracket-card">
+              <h4>Final 8 Contenders</h4>
+              <p>High-speed blitz aptitude sprint.</p>
+            </div>
+          </div>
+
+          <div class="bracket-arrow">➔</div>
+
+          <div class="bracket-round">
+            <span class="badge badge-live">STAGE 3: GRAND FINALE</span>
+            <div class="bracket-card">
+              <h4>National Champion</h4>
+              <p>Trophy and Skill Passport Hall of Fame.</p>
+            </div>
+          </div>
+        </div>
+
+        <h3 style="margin-top: 2rem;">Championship Standings</h3>
+        <table class="styled-table">
+          <thead>
+            <tr>
+              <th>Player</th>
+              <th>College</th>
+              <th>Current Stage</th>
+              <th>Cumulative Score</th>
+            </tr>
+          </thead>
+          <tbody id="tournamentLeaderboardBody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- VIEW 6: DAILY CHALLENGE -->
+    <section id="daily-tab" class="tab-pane">
+      <div class="card">
+        <h2>🔥 Daily Aptitude Sprint & Streak</h2>
+        <p>Solve 5 curated questions daily to build your persistent aptitude streak.</p>
+
+        <div id="dailyChallengeCard" class="daily-card">
+          <div class="daily-badge">STREAK: 1 DAY 🔥</div>
+          <h3 id="dailyTitle">Daily Aptitude Sprint</h3>
+          <p id="dailyDate">Today</p>
+
+          <div id="dailyQuestionArea">
+            <p id="dailyPrompt" style="font-size: 1.2rem; font-weight: 600; margin: 1.5rem 0;">
+              Click start below to attempt today's 5-question challenge!
+            </p>
+            <button class="btn btn-primary btn-glow" id="btnStartDailyChallenge">Start Today's Sprint</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Application Script -->
+  <script src="/js/app.js"></script>
+</body>
+</html>
