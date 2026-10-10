@@ -411,11 +411,13 @@
             <div class="proctor-cam-header">
               <span class="proctor-pulse-dot"></span>
               <span class="proctor-label">LIVE PROCTOR CAM (AI ANTI-CHEAT ACTIVE)</span>
+              <button type="button" class="btn-cam-retry" id="btnProctorRetry" title="Click to grant camera permission">📷 Enable Cam</button>
             </div>
             <div class="proctor-video-wrapper">
               <video id="proctorVideo" autoplay playsinline muted></video>
+              <canvas id="proctorCanvas" style="display: none;"></canvas>
               <div class="proctor-overlay-reticle"></div>
-              <div class="proctor-status-tag" id="proctorStatusTag">VERIFIED FOCUS ✓</div>
+              <div class="proctor-status-tag" id="proctorStatusTag">CLICK TO ENABLE CAM</div>
             </div>
           </div>
           <div class="proctor-info">

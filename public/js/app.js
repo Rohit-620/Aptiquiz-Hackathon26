@@ -33,12 +33,24 @@ const state = {
 // Web Audio API Sound Effects Synthesizer (No external mp3 assets needed)
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-// Proctoring Camera Handlers
+// Proctoring Camera Handlers & Snapshot Capture Loop
+let proctorCaptureInterval = null;
+
 async function startProctoringCamera() {
   const videoElem = document.getElementById('proctorVideo');
+  const canvasElem = document.getElementById('proctorCanvas');
+  const tag = document.getElementById('proctorStatusTag');
   if (!videoElem) return;
 
-  const tag = document.getElementById('proctorStatusTag');
+  // Check if browser/context supports getUserMedia
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (tag) {
+      tag.textContent = 'NO MEDIA API (USE HTTPS/LOCALHOST)';
+      tag.style.background = 'rgba(239, 68, 68, 0.85)';
+    }
+    showToast('⚠️ Camera requires localhost or HTTPS connection in your browser.');
+    return;
+  }
 
   // Progressive constraint fallbacks
   const constraintOptions = [
@@ -71,24 +83,66 @@ async function startProctoringCamera() {
       tag.textContent = 'VERIFIED FOCUS ✓';
       tag.style.background = 'rgba(16, 185, 129, 0.85)';
     }
-    console.log('[PROCTORING] Live camera feed activated for student');
+
+    // Set up continuous snapshot capture to canvas for proctoring verification
+    if (canvasElem) {
+      if (proctorCaptureInterval) clearInterval(proctorCaptureInterval);
+      proctorCaptureInterval = setInterval(() => {
+        if (!state.proctorStream || videoElem.paused || videoElem.ended) return;
+        try {
+          const ctx = canvasElem.getContext('2d');
+          if (videoElem.videoWidth && videoElem.videoHeight) {
+            canvasElem.width = videoElem.videoWidth;
+            canvasElem.height = videoElem.videoHeight;
+            ctx.drawImage(videoElem, 0, 0, canvasElem.width, canvasElem.height);
+          }
+        } catch (captureErr) {
+          console.warn('[PROCTORING] Canvas capture error:', captureErr);
+        }
+      }, 2000);
+    }
+
+    showToast('📷 Camera connected! Live proctor verification active.');
+    console.log('[PROCTORING] Live camera feed and frame capture activated.');
   } else {
     console.warn('[PROCTORING] Camera feed not allowed or unavailable:', lastError ? lastError.message : 'No devices');
     if (tag) {
-      tag.textContent = 'CAMERA BLOCKED';
+      tag.textContent = 'CAMERA BLOCKED (CLICK)';
       tag.style.background = 'rgba(239, 68, 68, 0.85)';
     }
-    showToast('⚠️ Camera access was not granted. Please allow camera access in your browser settings.');
+    showToast('⚠️ Camera access denied! Click the "📷 Enable Cam" button and allow camera permission in your browser address bar.');
   }
 }
 
 function stopProctoringCamera() {
+  if (proctorCaptureInterval) {
+    clearInterval(proctorCaptureInterval);
+    proctorCaptureInterval = null;
+  }
   if (state.proctorStream) {
     state.proctorStream.getTracks().forEach(track => track.stop());
     state.proctorStream = null;
     const videoElem = document.getElementById('proctorVideo');
     if (videoElem) videoElem.srcObject = null;
     console.log('[PROCTORING] Camera feed stopped');
+  }
+}
+
+function setupProctorRetryControls() {
+  const btnRetry = document.getElementById('btnProctorRetry');
+  const videoWrapper = document.querySelector('.proctor-video-wrapper');
+  
+  if (btnRetry) {
+    btnRetry.addEventListener('click', (e) => {
+      e.stopPropagation();
+      startProctoringCamera();
+    });
+  }
+
+  if (videoWrapper) {
+    videoWrapper.addEventListener('click', () => {
+      startProctoringCamera();
+    });
   }
 }
 
@@ -265,6 +319,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadTournaments();
   setupHostHandlers();
   setupDailyChallenge();
+  setupProctorRetryControls();
 
   // If room code exists in URL params (?room=ABCDEF), prefill it and open entry modal
   const urlParams = new URLSearchParams(window.location.search);

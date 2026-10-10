@@ -1213,14 +1213,33 @@ button, input, select {
   color: var(--accent-cyan);
 }
 
+.btn-cam-retry {
+  background: rgba(25, 230, 242, 0.15);
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-left: auto;
+  transition: all 0.2s;
+}
+
+.btn-cam-retry:hover {
+  background: var(--accent-cyan);
+  color: #070B16;
+}
+
 .proctor-video-wrapper {
   position: relative;
-  width: 130px;
-  height: 95px;
+  width: 140px;
+  height: 105px;
   border-radius: 8px;
   overflow: hidden;
   border: 2px solid var(--accent-cyan);
   background: #000;
+  cursor: pointer;
 }
 
 .proctor-video-wrapper video {
