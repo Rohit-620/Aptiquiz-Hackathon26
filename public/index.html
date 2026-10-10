@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AptiQuiz — The Real-Time Multiplayer Aptitude Arena</title>
   <meta name="description" content="High-stakes, real-time multiplayer aptitude quiz arena supporting up to 50 concurrent players with live comeback meter, college rankings, and esports thrills.">
-  <link rel="stylesheet" href="/css/style.css">
   <!-- Chart.js for analytics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Three.js for 3D Holographic Scene -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <!-- HTML5 QR Code Scanner -->
   <script src="https://unpkg.com/html5-qrcode"></script>
   <!-- Canvas Confetti for spectacular victory effect -->
@@ -52,59 +53,277 @@
 
     <!-- VIEW 1: ARENA / LOBBY / LIVE GAME -->
     <section id="arena-tab" class="tab-pane active">
-      <!-- 1.A Join Box (Default) -->
-      <div id="joinContainer" class="hero-card">
-        <div class="hero-badge">⚡ Real-Time Synchronized 50-Player Competition</div>
-        <h1 class="hero-title">Step into the Aptitude Arena</h1>
-        <p class="hero-subtitle">Compete live with top students across colleges. Fast answers score higher. Server-authoritative anti-cheat active.</p>
-
-        <form id="joinForm" class="join-form">
-          <div class="form-group">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <label for="roomCodeInput">Room Code</label>
-              <button type="button" class="btn-text-scanner" id="btnOpenScanner">📷 Scan QR Code</button>
+      <!-- 1.A CINEMATIC 3D ESPORTS HERO SECTION -->
+      <div id="joinContainer" class="hero-3d-wrapper">
+        <div class="hero-grid-container">
+          <!-- Left Content -->
+          <div class="hero-left-col">
+            <div class="hero-badge-glow">
+              <span class="pulse-icon">⚡</span> REAL-TIME MULTIPLAYER • UP TO 50 PLAYERS
             </div>
-            <input type="text" id="roomCodeInput" placeholder="e.g. 8K2M9Q" maxlength="10" required autocomplete="off">
-          </div>
+            <h1 class="hero-title-esports">
+              Think Fast.<br>
+              <span class="gradient-text">Rise Above.</span>
+            </h1>
+            <p class="hero-desc-esports">
+              Challenge your mind. Compete with your campus in synchronized aptitude blitz matches. Claim your place in the national collegiate hall of fame.
+            </p>
 
-          <!-- Camera QR Scanner Modal/Box -->
-          <div id="qrScannerBox" class="scanner-box hidden">
-            <div class="scanner-header">
-              <span>📷 Point Camera at Host QR Code</span>
-              <button type="button" class="btn-close-scanner" id="btnCloseScanner">✕</button>
+            <div class="hero-cta-group">
+              <button type="button" class="btn btn-primary btn-glow btn-hero" id="btnHeroOpenJoin">
+                <span>🚀 Enter the Arena</span>
+              </button>
+              <button type="button" class="btn btn-secondary btn-hero" id="btnHeroScrollFeatures">
+                <span>⚡ Explore Features</span>
+              </button>
             </div>
-            <div id="qrReader" style="width: 100%; min-height: 200px;"></div>
-            <div style="margin-top: 0.75rem; border-top: 1px solid var(--border-color); padding-top: 0.5rem; text-align: center;">
-              <span style="font-size: 0.8rem; color: var(--text-muted);">Camera not working or blocked?</span><br>
-              <label for="qrFileInput" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.35rem 0.75rem; margin-top: 0.35rem; cursor: pointer; display: inline-block;">
-                📁 Upload/Select QR Image
-              </label>
-              <input type="file" id="qrFileInput" accept="image/*" style="display: none;">
+
+            <!-- Trust / Fairness Indicators -->
+            <div class="hero-trust-bar">
+              <div class="trust-pill">
+                <span class="trust-icon">🛡️</span>
+                <span>Server-Authoritative Anti-Cheat</span>
+              </div>
+              <div class="trust-pill">
+                <span class="trust-icon">⏱️</span>
+                <span>Millisecond Precision Scoring</span>
+              </div>
+              <div class="trust-pill">
+                <span class="trust-icon">🏛️</span>
+                <span>Inter-Collegiate Rankings</span>
+              </div>
             </div>
           </div>
 
-          <div class="form-group">
-            <label for="nicknameInput">Your Nickname</label>
-            <input type="text" id="nicknameInput" placeholder="e.g. AceCoder" maxlength="20" required autocomplete="off">
+          <!-- Right Content: 3D Holographic Quiz Arena & Glassmorphic Floating HUD -->
+          <div class="hero-right-col">
+            <div class="arena-3d-canvas-wrapper" id="arena3dCanvasContainer">
+              <!-- Three.js Canvas mounts here -->
+              <div class="css-3d-fallback" id="css3dFallback">
+                <div class="holo-core">
+                  <div class="holo-ring-1"></div>
+                  <div class="holo-ring-2"></div>
+                  <div class="holo-energy-center">⚡</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Floating 3D Glass HUD Widgets (Inspired by modern cyber esports UI) -->
+            <div class="floating-hud-widget hud-top-right">
+              <div class="hud-header">
+                <span class="hud-dot"></span>
+                <span>LIVE MATCH ARENA</span>
+              </div>
+              <div class="hud-body">
+                <div class="hud-stat-num">50 / 50</div>
+                <div class="hud-stat-desc">Players Synchronized</div>
+              </div>
+            </div>
+
+            <div class="floating-hud-widget hud-bottom-left">
+              <div class="hud-header">
+                <span class="hud-icon">🏆</span>
+                <span>LEADER SURGE</span>
+              </div>
+              <div class="hud-body">
+                <div class="hud-leader-name">AceCoder • IITB</div>
+                <div class="hud-leader-score">+1,000 pts (Supersonic 0.8s)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Glassmorphic Player Entry Modal / Integrated Panel -->
+        <div id="playerEntryModal" class="player-entry-modal hidden">
+          <div class="entry-modal-backdrop" id="entryModalBackdrop"></div>
+          <div class="glass-entry-card">
+            <div class="entry-card-header">
+              <div class="entry-badge">⚡ ARENA REGISTRATION</div>
+              <button type="button" class="btn-close-modal" id="btnCloseEntryModal">✕</button>
+            </div>
+            <h2 class="entry-title">Equip Your Competitor</h2>
+            <p class="entry-subtitle">Enter room credentials or scan QR to join the synchronized blitz room.</p>
+
+            <form id="joinForm" class="join-form">
+              <!-- Avatar Preview Picker -->
+              <div class="avatar-picker-row">
+                <label>Select Avatar:</label>
+                <div class="avatar-options">
+                  <button type="button" class="avatar-btn active" data-avatar="⚡">⚡</button>
+                  <button type="button" class="avatar-btn" data-avatar="🧠">🧠</button>
+                  <button type="button" class="avatar-btn" data-avatar="🚀">🚀</button>
+                  <button type="button" class="avatar-btn" data-avatar="👑">👑</button>
+                  <button type="button" class="avatar-btn" data-avatar="🎯">🎯</button>
+                  <button type="button" class="avatar-btn" data-avatar="🏎️">🏎️</button>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label for="roomCodeInput">Room Code</label>
+                  <button type="button" class="btn-text-scanner" id="btnOpenScanner">📷 Scan QR Code</button>
+                </div>
+                <input type="text" id="roomCodeInput" placeholder="e.g. 8K2M9Q" maxlength="10" required autocomplete="off">
+              </div>
+
+              <!-- Camera QR Scanner Modal/Box -->
+              <div id="qrScannerBox" class="scanner-box hidden">
+                <div class="scanner-header">
+                  <span>📷 Point Camera at Host QR Code</span>
+                  <button type="button" class="btn-close-scanner" id="btnCloseScanner">✕</button>
+                </div>
+                <div id="qrReader" style="width: 100%; min-height: 200px;"></div>
+                <div style="margin-top: 0.75rem; border-top: 1px solid var(--border-color); padding-top: 0.5rem; text-align: center;">
+                  <span style="font-size: 0.8rem; color: var(--text-muted);">Camera not working or blocked?</span><br>
+                  <label for="qrFileInput" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.35rem 0.75rem; margin-top: 0.35rem; cursor: pointer; display: inline-block;">
+                    📁 Upload/Select QR Image
+                  </label>
+                  <input type="file" id="qrFileInput" accept="image/*" style="display: none;">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="nicknameInput">Your Nickname</label>
+                <input type="text" id="nicknameInput" placeholder="e.g. AceCoder" maxlength="20" required autocomplete="off">
+              </div>
+
+              <div class="form-group">
+                <label for="collegeSelect">College / University</label>
+                <select id="collegeSelect" required>
+                  <option value="">Loading colleges...</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="teamInput">Team Name (Optional for Squad battles)</label>
+                <input type="text" id="teamInput" placeholder="e.g. Team Alpha" maxlength="30">
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary btn-glow" id="btnJoinRoom" style="flex: 2;">🚀 Enter Arena</button>
+                <button type="button" class="btn btn-secondary" id="btnJoinSpectator" style="flex: 1;">👁️ Spectate</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- 1.B LIVE ARENA INFORMATION STRIP -->
+        <div class="arena-info-strip">
+          <div class="info-strip-card">
+            <span class="info-icon">👥</span>
+            <div>
+              <div class="info-val" id="statOnlinePlayers">50+</div>
+              <div class="info-label">Active Competitors</div>
+            </div>
           </div>
 
-          <div class="form-group">
-            <label for="collegeSelect">College / University</label>
-            <select id="collegeSelect" required>
-              <option value="">Loading colleges...</option>
-            </select>
+          <div class="info-strip-card">
+            <span class="info-icon">🎮</span>
+            <div>
+              <div class="info-val" id="statActiveRooms">Live</div>
+              <div class="info-label">Multiplayer Arenas</div>
+            </div>
           </div>
 
-          <div class="form-group">
-            <label for="teamInput">Team Name (Optional)</label>
-            <input type="text" id="teamInput" placeholder="e.g. Team Alpha" maxlength="30">
+          <div class="info-strip-card">
+            <span class="info-icon">⚡</span>
+            <div>
+              <div class="info-val" id="statQuestionsAnswered">1,200+</div>
+              <div class="info-label">Questions Blitzed</div>
+            </div>
           </div>
 
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary btn-glow" id="btnJoinRoom">🚀 Enter Arena</button>
-            <button type="button" class="btn btn-secondary" id="btnJoinSpectator">👁️ Spectate</button>
+          <div class="info-strip-card">
+            <span class="info-icon">🏛️</span>
+            <div>
+              <div class="info-val">7 Top Univs</div>
+              <div class="info-label">College League</div>
+            </div>
           </div>
-        </form>
+        </div>
+
+        <!-- 1.C INTERACTIVE GAMEPLAY SNEAK-PEEK PREVIEW -->
+        <div class="preview-quiz-section">
+          <div class="section-badge-center">🎮 INTERACTIVE PRACTICE PREVIEW</div>
+          <h2 class="section-title-center">Experience the 15-Second Blitz</h2>
+          <p class="section-subtitle-center">Try a sample aptitude question right now with instant server evaluation.</p>
+
+          <div class="preview-quiz-card">
+            <div class="preview-top-bar">
+              <span class="badge badge-info">PRACTICE ROUND</span>
+              <div class="preview-timer" id="previewTimer">15s</div>
+            </div>
+            <h3 class="preview-prompt" id="previewPrompt">
+              If a train 120m long passes a pole in 6 seconds, what is its speed in km/h?
+            </h3>
+            <div class="preview-options-grid" id="previewOptionsGrid">
+              <button type="button" class="preview-opt-btn" data-opt="A">
+                <span class="opt-key">A</span> 60 km/h
+              </button>
+              <button type="button" class="preview-opt-btn" data-opt="B">
+                <span class="opt-key">B</span> 72 km/h
+              </button>
+              <button type="button" class="preview-opt-btn" data-opt="C">
+                <span class="opt-key">C</span> 80 km/h
+              </button>
+              <button type="button" class="preview-opt-btn" data-opt="D">
+                <span class="opt-key">D</span> 90 km/h
+              </button>
+            </div>
+            <div id="previewFeedback" class="preview-feedback hidden"></div>
+          </div>
+        </div>
+
+        <!-- 1.D 3D FEATURE SHOWCASE GRID -->
+        <div class="feature-showcase-section" id="featureShowcaseSection">
+          <div class="section-badge-center">⚡ CUTTING-EDGE ESPORTS ENGINE</div>
+          <h2 class="section-title-center">Engineered for Fair, Synchronized Competition</h2>
+          <p class="section-subtitle-center">Everything needed for high-stakes collegiate aptitude championships.</p>
+
+          <div class="feature-3d-grid">
+            <div class="feature-3d-card">
+              <div class="f-icon">🌐</div>
+              <h3>50-Player Synchronized</h3>
+              <p>Zero-lag real-time quiz synchronization verified up to 50 concurrent players per room.</p>
+              <div class="f-pill active">Verified Tested ✓</div>
+            </div>
+
+            <div class="feature-3d-card">
+              <div class="f-icon">🛡️</div>
+              <h3>Smart Anti-Cheat & Camera</h3>
+              <p>Authoritative server timing, option scrambling, webcam focus reticle, and 2-strike tab switch termination.</p>
+              <div class="f-pill active">Live Active ✓</div>
+            </div>
+
+            <div class="feature-3d-card">
+              <div class="f-icon">⚡</div>
+              <h3>Live Comeback Surge</h3>
+              <p>Dynamic psychological momentum indicators showing rank deltas and closing score gaps.</p>
+              <div class="f-pill active">Real-Time ✓</div>
+            </div>
+
+            <div class="feature-3d-card">
+              <div class="f-icon">🏛️</div>
+              <h3>Inter-Collegiate League</h3>
+              <p>Aggregated institutional ratings calculated mathematically from verified match accuracy.</p>
+              <div class="f-pill active">Algorithmic ✓</div>
+            </div>
+
+            <div class="feature-3d-card">
+              <div class="f-icon">🤖</div>
+              <h3>AI Question Generation</h3>
+              <p>Procedural and AI-assisted aptitude question generation with automated QA quality checker.</p>
+              <div class="f-pill active">Host Tool ✓</div>
+            </div>
+
+            <div class="feature-3d-card">
+              <div class="f-icon">📜</div>
+              <h3>Persistent Skill Passport</h3>
+              <p>Comprehensive competitor credential showing accuracy percentage, best score, and match history.</p>
+              <div class="f-pill active">Persistent ✓</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 1.B Multiplayer Lobby -->
@@ -602,7 +821,58 @@
     </section>
   </main>
 
-  <!-- Application Script -->
+  <!-- Esports Arena Footer -->
+  <footer class="app-footer">
+    <div class="footer-divider-3d"></div>
+    <div class="footer-container">
+      <div class="footer-brand">
+        <div class="logo-container">
+          <div class="logo-icon">⚡</div>
+          <div class="logo-text">
+            <span class="logo-main">AptiQuiz</span>
+            <span class="logo-sub">Multiplayer Arena</span>
+          </div>
+        </div>
+        <p class="footer-desc">
+          The next-generation, server-authoritative multiplayer aptitude battleground for universities, colleges, and national competitive coding tournaments.
+        </p>
+      </div>
+
+      <div class="footer-links-col">
+        <h4>Arena Modes</h4>
+        <ul>
+          <li><a href="#" onclick="switchTab('arena-tab'); return false;">50-Player Blitz</a></li>
+          <li><a href="#" onclick="switchTab('host-tab'); return false;">Squad Battles</a></li>
+          <li><a href="#" onclick="switchTab('tournament-tab'); return false;">Championship Tournaments</a></li>
+          <li><a href="#" onclick="switchTab('daily-tab'); return false;">Daily Challenge Sprints</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-links-col">
+        <h4>Intelligence & Fair Play</h4>
+        <ul>
+          <li><a href="#" onclick="switchTab('college-tab'); return false;">Inter-Collegiate League</a></li>
+          <li><a href="#" onclick="switchTab('passport-tab'); return false;">Verified Skill Passport</a></li>
+          <li><a href="#" onclick="switchTab('host-tab'); return false;">AI Question Generator</a></li>
+          <li><a href="#proctorBar">Anti-Cheat Camera Proctor</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-links-col">
+        <h4>Platform Status</h4>
+        <div class="status-pill-footer">
+          <span class="status-dot-green"></span>
+          <span>Socket.IO Engine Operational</span>
+        </div>
+        <div class="footer-copy">
+          © <span id="currentYear">2026</span> AptiQuiz. Built for Hackathon 2026.
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- 3D Arena Engine & Application Script -->
+  <script src="/js/arena3d.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

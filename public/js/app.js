@@ -231,20 +231,131 @@ document.addEventListener('DOMContentLoaded', () => {
   setupAudioToggle();
   setupQRScanner();
   setupTabSwitchMonitor();
+  setupHeroInteractions();
+  setupPracticeQuizPreview();
+  init3DScene();
+  loadArenaStats();
   loadColleges();
   loadCollegeLeague();
   loadTournaments();
   setupHostHandlers();
   setupDailyChallenge();
 
-  // If room code exists in URL params (?room=ABCDEF), prefill it
+  // If room code exists in URL params (?room=ABCDEF), prefill it and open entry modal
   const urlParams = new URLSearchParams(window.location.search);
   const codeParam = urlParams.get('room');
   if (codeParam) {
     elements.roomCodeInput.value = codeParam.toUpperCase();
+    openPlayerEntryModal();
     showToast(`Room code ${codeParam.toUpperCase()} detected and pre-filled!`);
   }
 });
+
+function init3DScene() {
+  if (typeof Arena3DScene === 'function') {
+    state.arena3d = new Arena3DScene('arena3dCanvasContainer');
+  }
+}
+
+async function loadArenaStats() {
+  try {
+    const res = await fetch('/api/arena/stats');
+    const data = await res.json();
+    if (data.success && data.stats) {
+      const elOnline = document.getElementById('statOnlinePlayers');
+      const elRooms = document.getElementById('statActiveRooms');
+      const elAns = document.getElementById('statQuestionsAnswered');
+
+      if (elOnline) elOnline.textContent = `${Math.max(12, data.stats.onlinePlayers)}+`;
+      if (elRooms) elRooms.textContent = `${data.stats.activeRooms} Active`;
+      if (elAns) elAns.textContent = `${data.stats.todayQuestionsAnswered}+`;
+    }
+  } catch (err) {
+    console.error('Failed to load arena stats', err);
+  }
+}
+
+function openPlayerEntryModal() {
+  const modal = document.getElementById('playerEntryModal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closePlayerEntryModal() {
+  const modal = document.getElementById('playerEntryModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function setupHeroInteractions() {
+  const btnHeroOpenJoin = document.getElementById('btnHeroOpenJoin');
+  const btnCloseEntryModal = document.getElementById('btnCloseEntryModal');
+  const entryModalBackdrop = document.getElementById('entryModalBackdrop');
+  const btnHeroScrollFeatures = document.getElementById('btnHeroScrollFeatures');
+
+  if (btnHeroOpenJoin) {
+    btnHeroOpenJoin.addEventListener('click', openPlayerEntryModal);
+  }
+  if (btnCloseEntryModal) {
+    btnCloseEntryModal.addEventListener('click', closePlayerEntryModal);
+  }
+  if (entryModalBackdrop) {
+    entryModalBackdrop.addEventListener('click', closePlayerEntryModal);
+  }
+  if (btnHeroScrollFeatures) {
+    btnHeroScrollFeatures.addEventListener('click', () => {
+      const featSec = document.getElementById('featureShowcaseSection');
+      if (featSec) featSec.scrollIntoView({ behavior: 'smooth' });
+    });
+  }
+
+  // Avatar picker buttons
+  const avatarBtns = document.querySelectorAll('.avatar-btn');
+  avatarBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      avatarBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const avatarIcon = btn.getAttribute('data-avatar');
+      const userAvatar = document.querySelector('.user-avatar');
+      if (userAvatar) userAvatar.textContent = avatarIcon;
+      playSound('tick');
+    });
+  });
+}
+
+function setupPracticeQuizPreview() {
+  const optBtns = document.querySelectorAll('.preview-opt-btn');
+  const feedback = document.getElementById('previewFeedback');
+  const timer = document.getElementById('previewTimer');
+
+  let remaining = 15;
+  const pInterval = setInterval(() => {
+    remaining--;
+    if (timer) timer.textContent = `${Math.max(0, remaining)}s`;
+    if (remaining <= 0) clearInterval(pInterval);
+  }, 1000);
+
+  optBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const chosen = btn.getAttribute('data-opt');
+      optBtns.forEach(b => b.disabled = true);
+      clearInterval(pInterval);
+
+      if (chosen === 'B') {
+        btn.classList.add('correct');
+        feedback.className = 'preview-feedback success';
+        feedback.textContent = '🎯 Correct! Speed = 120m / 6s = 20 m/s * (18/5) = 72 km/h. +950 Speed Points!';
+        playSound('correct');
+      } else {
+        btn.classList.add('wrong');
+        const correctBtn = document.querySelector('.preview-opt-btn[data-opt="B"]');
+        if (correctBtn) correctBtn.classList.add('correct');
+        feedback.className = 'preview-feedback failure';
+        feedback.textContent = '❌ Incorrect. Correct answer is Option B (72 km/h). Speed = 20 m/s * 3.6 = 72 km/h.';
+        playSound('wrong');
+      }
+      feedback.classList.remove('hidden');
+    });
+  });
+}
 
 function setupTabSwitchMonitor() {
   document.addEventListener('visibilitychange', () => {
@@ -572,6 +683,7 @@ function handleJoinResponse(res) {
     return showToast(`Error: ${res.error}`);
   }
 
+  closePlayerEntryModal();
   elements.joinContainer.classList.add('hidden');
   elements.lobbyContainer.classList.remove('hidden');
   elements.displayRoomCode.textContent = res.roomCode;
