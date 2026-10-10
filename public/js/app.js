@@ -24,11 +24,46 @@ const state = {
   hasAnswered: false,
   timerInterval: null,
   sessionToken: localStorage.getItem('aptiquiz_session_token') || null,
-  html5QrCode: null
+  html5QrCode: null,
+  proctorStream: null
 };
 
 // Web Audio API Sound Effects Synthesizer (No external mp3 assets needed)
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+// Proctoring Camera Handlers
+async function startProctoringCamera() {
+  const videoElem = document.getElementById('proctorVideo');
+  if (!videoElem) return;
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: 'user' },
+      audio: false
+    });
+    state.proctorStream = stream;
+    videoElem.srcObject = stream;
+    videoElem.play();
+    console.log('[PROCTORING] Live camera feed activated for student');
+  } catch (err) {
+    console.warn('[PROCTORING] Camera feed not allowed or unavailable:', err.message);
+    const tag = document.getElementById('proctorStatusTag');
+    if (tag) {
+      tag.textContent = 'NO CAM DETECTED';
+      tag.style.background = 'rgba(239, 68, 68, 0.85)';
+    }
+  }
+}
+
+function stopProctoringCamera() {
+  if (state.proctorStream) {
+    state.proctorStream.getTracks().forEach(track => track.stop());
+    state.proctorStream = null;
+    const videoElem = document.getElementById('proctorVideo');
+    if (videoElem) videoElem.srcObject = null;
+    console.log('[PROCTORING] Camera feed stopped');
+  }
+}
 
 function playSound(type) {
   if (!state.soundEnabled) return;
@@ -625,6 +660,11 @@ socket.on('question:start', (data) => {
   state.hasAnswered = false;
   playSound('countdown');
 
+  // Activate Live Proctor Camera Feed during the test
+  if (!state.proctorStream && !state.isSpectator) {
+    startProctoringCamera();
+  }
+
   // Reset UI
   elements.qCurrentNum.textContent = data.questionIndex + 1;
   elements.qTotalNum.textContent = data.totalQuestions;
@@ -697,6 +737,7 @@ function updateLiveLeaderboard(leaderboard = []) {
 
 socket.on('game:finished', (data) => {
   clearInterval(state.timerInterval);
+  stopProctoringCamera(); // Stop webcam feed when quiz concludes
   elements.liveArenaContainer.classList.add('hidden');
   elements.finalResultsContainer.classList.remove('hidden');
 
