@@ -38,22 +38,47 @@ async function startProctoringCamera() {
   const videoElem = document.getElementById('proctorVideo');
   if (!videoElem) return;
 
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: 'user' },
-      audio: false
-    });
+  const tag = document.getElementById('proctorStatusTag');
+
+  // Progressive constraint fallbacks
+  const constraintOptions = [
+    { video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: 'user' }, audio: false },
+    { video: { facingMode: 'user' }, audio: false },
+    { video: true, audio: false }
+  ];
+
+  let stream = null;
+  let lastError = null;
+
+  for (const constraints of constraintOptions) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (stream) break;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
+  if (stream) {
     state.proctorStream = stream;
     videoElem.srcObject = stream;
-    videoElem.play();
-    console.log('[PROCTORING] Live camera feed activated for student');
-  } catch (err) {
-    console.warn('[PROCTORING] Camera feed not allowed or unavailable:', err.message);
-    const tag = document.getElementById('proctorStatusTag');
+    try {
+      await videoElem.play();
+    } catch (playErr) {
+      console.warn('Video play error:', playErr);
+    }
     if (tag) {
-      tag.textContent = 'NO CAM DETECTED';
+      tag.textContent = 'VERIFIED FOCUS ✓';
+      tag.style.background = 'rgba(16, 185, 129, 0.85)';
+    }
+    console.log('[PROCTORING] Live camera feed activated for student');
+  } else {
+    console.warn('[PROCTORING] Camera feed not allowed or unavailable:', lastError ? lastError.message : 'No devices');
+    if (tag) {
+      tag.textContent = 'CAMERA BLOCKED';
       tag.style.background = 'rgba(239, 68, 68, 0.85)';
     }
+    showToast('⚠️ Camera access was not granted. Please allow camera access in your browser settings.');
   }
 }
 
@@ -471,27 +496,42 @@ function setupQRScanner() {
         stopScanner();
       };
 
-      // Try environment camera first, then fall back to user webcam, then any available camera
+      // Detect whether device is mobile or laptop/desktop
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const preferredFacing = isMobile ? { facingMode: 'environment' } : { facingMode: 'user' };
+
       try {
         await state.html5QrCode.start(
-          { facingMode: 'environment' },
+          preferredFacing,
           { fps: 15, qrbox: { width: 220, height: 220 } },
           onScanSuccess,
           () => {}
         );
-      } catch (envErr) {
-        console.warn('Environment camera failed, attempting default/user camera:', envErr);
-        const cameras = await Html5Qrcode.getCameras();
-        if (cameras && cameras.length > 0) {
-          const cameraId = cameras[0].id;
+      } catch (firstErr) {
+        console.warn('Preferred camera start failed, trying available cameras:', firstErr);
+        try {
+          const cameras = await Html5Qrcode.getCameras();
+          if (cameras && cameras.length > 0) {
+            // Pick last camera on mobile (often back camera) or first on desktop (webcam)
+            const chosenCam = isMobile && cameras.length > 1 ? cameras[cameras.length - 1] : cameras[0];
+            await state.html5QrCode.start(
+              chosenCam.id,
+              { fps: 15, qrbox: { width: 220, height: 220 } },
+              onScanSuccess,
+              () => {}
+            );
+          } else {
+            throw new Error('No video camera devices found.');
+          }
+        } catch (camErr) {
+          console.warn('Fallback to direct user media:', camErr);
+          // Direct generic constraint fallback
           await state.html5QrCode.start(
-            cameraId,
+            { facingMode: 'user' },
             { fps: 15, qrbox: { width: 220, height: 220 } },
             onScanSuccess,
             () => {}
           );
-        } else {
-          throw new Error('No video camera devices found.');
         }
       }
     } catch (err) {
