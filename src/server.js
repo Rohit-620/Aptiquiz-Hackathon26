@@ -49,9 +49,10 @@ const PORT = process.env.PORT || 3000;
 
 async function startServer() {
   await db.initDB();
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`====================================================`);
     console.log(`🚀 AptiQuiz Server live at: http://localhost:${PORT}`);
+    console.log(`📱 Mobile Wi-Fi Join: http://60.70.3.14:${PORT}`);
     console.log(`📡 Real-Time Socket.IO: Activated`);
     console.log(`🎯 Ready for 50-player multiplayer arena matches!`);
     console.log(`====================================================`);

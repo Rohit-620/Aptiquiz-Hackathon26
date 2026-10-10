@@ -10,12 +10,35 @@ const { aggregateCollegeRankings } = require('../services/scoringService');
 const aiService = require('../services/aiService');
 const roomManager = require('../services/roomManager');
 
+const os = require('os');
+
+function getLocalIpAddress() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
+}
+
 // QR Code Generator for mobile join
 router.get('/qrcode/:roomCode', async (req, res) => {
   try {
     const { roomCode } = req.params;
-    const origin = req.protocol + '://' + req.get('host');
-    const joinUrl = `${origin}/?room=${encodeURIComponent(roomCode.toUpperCase())}`;
+    const port = process.env.PORT || 3000;
+    const localIp = getLocalIpAddress();
+    
+    // Check if client is using localhost or external IP
+    let host = req.get('host');
+    if (host.includes('localhost') || host.includes('127.0.0.1')) {
+      // For mobile scanner to work, replace localhost with PC's actual Wi-Fi IP address!
+      host = `${localIp}:${port}`;
+    }
+
+    const joinUrl = `http://${host}/?room=${encodeURIComponent(roomCode.toUpperCase())}`;
     const qrDataUrl = await QRCode.toDataURL(joinUrl, {
       width: 250,
       margin: 2,
@@ -24,7 +47,7 @@ router.get('/qrcode/:roomCode', async (req, res) => {
         light: '#0b0f19'
       }
     });
-    res.json({ success: true, qrDataUrl, joinUrl });
+    res.json({ success: true, qrDataUrl, joinUrl, localIp });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
