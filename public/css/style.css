@@ -821,6 +821,34 @@ body {
   flex: 1;
 }
 
+/* Disqualified Modal Overlay */
+.disqualified-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(11, 15, 25, 0.95);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.disqualified-card {
+  background: var(--bg-card);
+  border: 2px solid var(--accent-red);
+  box-shadow: 0 0 35px rgba(239, 68, 68, 0.5);
+  border-radius: 16px;
+  padding: 2.5rem 2rem;
+  max-width: 520px;
+  width: 100%;
+  text-align: center;
+  animation: fadeIn 0.3s ease;
+}
+
 /* Responsiveness */
 @media (max-width: 768px) {
   .proctor-bar {

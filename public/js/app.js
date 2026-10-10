@@ -25,7 +25,9 @@ const state = {
   timerInterval: null,
   sessionToken: localStorage.getItem('aptiquiz_session_token') || null,
   html5QrCode: null,
-  proctorStream: null
+  proctorStream: null,
+  tabSwitchWarnings: 0,
+  isDisqualified: false
 };
 
 // Web Audio API Sound Effects Synthesizer (No external mp3 assets needed)
@@ -228,6 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupNavigation();
   setupAudioToggle();
   setupQRScanner();
+  setupTabSwitchMonitor();
   loadColleges();
   loadCollegeLeague();
   loadTournaments();
@@ -242,6 +245,78 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast(`Room code ${codeParam.toUpperCase()} detected and pre-filled!`);
   }
 });
+
+function setupTabSwitchMonitor() {
+  document.addEventListener('visibilitychange', () => {
+    // Only monitor when a test is actively running (question is live) and player is not spectator or host
+    const isTestActive = !elements.liveArenaContainer.classList.contains('hidden') &&
+                         elements.finalResultsContainer.classList.contains('hidden') &&
+                         !state.isHost &&
+                         !state.isSpectator;
+
+    if (!isTestActive || state.isDisqualified) return;
+
+    if (document.hidden) {
+      // User switched tab or minimized window!
+      state.tabSwitchWarnings += 1;
+      const countElem = document.getElementById('tabWarningCount');
+      if (countElem) countElem.textContent = state.tabSwitchWarnings;
+
+      playSound('wrong');
+
+      if (state.tabSwitchWarnings > 2) {
+        // Disqualify and terminate test immediately!
+        state.isDisqualified = true;
+        stopProctoringCamera();
+        clearInterval(state.timerInterval);
+
+        // Hide live arena and show full disqualified screen
+        elements.liveArenaContainer.classList.add('hidden');
+        const modal = document.getElementById('disqualifiedModal');
+        if (modal) modal.classList.remove('hidden');
+
+        // Disconnect from game room
+        socket.disconnect();
+        showToast('❌ Disqualified: Exceeded maximum allowed tab switches!');
+      } else {
+        // Warning 1 or 2
+        showToast(`⚠️ WARNING ${state.tabSwitchWarnings}/2: Tab switch detected! Staying on another tab will terminate your test!`);
+      }
+    }
+  });
+
+  // Also catch window blur (e.g. alt-tab or opening split screen/inspect element)
+  window.addEventListener('blur', () => {
+    const isTestActive = !elements.liveArenaContainer.classList.contains('hidden') &&
+                         elements.finalResultsContainer.classList.contains('hidden') &&
+                         !state.isHost &&
+                         !state.isSpectator;
+
+    if (!isTestActive || state.isDisqualified) return;
+
+    // Trigger same security check
+    state.tabSwitchWarnings += 1;
+    const countElem = document.getElementById('tabWarningCount');
+    if (countElem) countElem.textContent = state.tabSwitchWarnings;
+
+    playSound('wrong');
+
+    if (state.tabSwitchWarnings > 2) {
+      state.isDisqualified = true;
+      stopProctoringCamera();
+      clearInterval(state.timerInterval);
+
+      elements.liveArenaContainer.classList.add('hidden');
+      const modal = document.getElementById('disqualifiedModal');
+      if (modal) modal.classList.remove('hidden');
+
+      socket.disconnect();
+      showToast('❌ Disqualified: Window focus lost more than twice!');
+    } else {
+      showToast(`⚠️ WARNING ${state.tabSwitchWarnings}/2: Window focus lost! Return immediately to prevent disqualification!`);
+    }
+  });
+}
 
 function setupAudioToggle() {
   elements.btnToggleSound.addEventListener('click', () => {

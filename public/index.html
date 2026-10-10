@@ -200,10 +200,32 @@
             </div>
           </div>
           <div class="proctor-info">
-            <span class="badge badge-success">🛡️ Proctoring Active</span>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="badge badge-success">🛡️ Proctoring Active</span>
+              <span class="badge badge-warning" id="tabWarningBadge" style="font-size: 0.8rem; font-weight: 800;">
+                ⚠️ Tab Warnings: <span id="tabWarningCount">0</span>/2
+              </span>
+            </div>
             <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
-              Camera monitoring ensures fair, synchronized gameplay. Tab switches & distractions are logged.
+              Strict Anti-Cheat: Tab switches will trigger immediate warnings. More than 2 tab switches will automatically disqualify and terminate your test!
             </p>
+          </div>
+        </div>
+
+        <!-- Disqualified Notification Screen -->
+        <div id="disqualifiedModal" class="disqualified-overlay hidden">
+          <div class="disqualified-card">
+            <div style="font-size: 3.5rem;">🚫</div>
+            <h2 style="color: var(--accent-red); margin: 0.5rem 0;">Test Terminated & Disqualified!</h2>
+            <p style="color: var(--text-muted); font-size: 1rem; margin-bottom: 1.5rem;">
+              You exceeded the maximum allowed tab switches (more than 2 violations detected). Your test has been automatically closed to maintain integrity.
+            </p>
+            <div class="badge badge-live" style="padding: 0.5rem 1rem; font-size: 0.9rem;">
+              Violation Logged on Server • Anti-Cheat Enforcement
+            </div>
+            <div style="margin-top: 2rem;">
+              <button class="btn btn-secondary" onclick="window.location.reload();">Return to Home</button>
+            </div>
           </div>
         </div>
 
