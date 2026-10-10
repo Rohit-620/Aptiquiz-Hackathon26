@@ -27,7 +27,19 @@ const state = {
   html5QrCode: null,
   proctorStream: null,
   tabSwitchWarnings: 0,
-  isDisqualified: false
+  isDisqualified: false,
+
+  // Multi-Round Adaptive Practice Session State
+  practice: {
+    sessionId: null,
+    currentRoundNumber: null,
+    currentRoundQuestions: [],
+    currentQuestionIndexInRound: 0,
+    currentRoundAnswers: [],
+    selectedOption: null,
+    isBonusActive: false,
+    bonusQuestion: null
+  }
 };
 
 // Web Audio API Sound Effects Synthesizer (No external mp3 assets needed)
@@ -551,6 +563,15 @@ document.addEventListener('DOMContentLoaded', () => {
   setupHostHandlers();
   setupDailyChallenge();
   setupProctorRetryControls();
+  setupPracticeSystem();
+
+  // Hero practice button trigger
+  const btnHeroOpenPractice = document.getElementById('btnHeroOpenPractice');
+  if (btnHeroOpenPractice) {
+    btnHeroOpenPractice.addEventListener('click', () => {
+      switchTab('practice-tab');
+    });
+  }
 
   // If room code exists in URL params (?room=ABCDEF), prefill it and open entry modal
   const urlParams = new URLSearchParams(window.location.search);
@@ -909,6 +930,12 @@ async function loadColleges() {
     if (data.success && data.colleges) {
       elements.collegeSelect.innerHTML = '<option value="">Select your institution</option>' +
         data.colleges.map(c => `<option value="${c.id}" data-name="${c.name}">${c.name} (${c.code})</option>`).join('');
+
+      const practiceCollegeSelect = document.getElementById('practiceCollegeSelect');
+      if (practiceCollegeSelect) {
+        practiceCollegeSelect.innerHTML = '<option value="">Select your institution (optional)</option>' +
+          data.colleges.map(c => `<option value="${c.id}" data-name="${c.name}">${c.name} (${c.code})</option>`).join('');
+      }
     }
   } catch (err) {
     console.error('Failed to load colleges', err);
@@ -1442,3 +1469,760 @@ function setupDailyChallenge() {
     }
   });
 }
+
+/* ==========================================================================
+   AptiQuiz Multi-Round Adaptive Practice System (Client Controller)
+   ========================================================================== */
+
+function setupPracticeSystem() {
+  const practiceStartForm = document.getElementById('practiceStartForm');
+  const practiceNicknameInput = document.getElementById('practiceNicknameInput');
+  const practiceCollegeSelect = document.getElementById('practiceCollegeSelect');
+  const btnResetPracticeSession = document.getElementById('btnResetPracticeSession');
+  const btnStartNewPracticeSession = document.getElementById('btnStartNewPracticeSession');
+
+  // Round Action Buttons
+  const btnActionR1 = document.getElementById('btnActionR1');
+  const btnActionR2 = document.getElementById('btnActionR2');
+  const btnActionR3 = document.getElementById('btnActionR3');
+  const btnActionBonus = document.getElementById('btnActionBonus');
+
+  // Submit Answer Button
+  const btnSubmitPracticeAnswer = document.getElementById('btnSubmitPracticeAnswer');
+
+  // Form submission: Start Practice Session
+  if (practiceStartForm) {
+    practiceStartForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const nickname = practiceNicknameInput.value.trim() || 'Student';
+      const collegeId = practiceCollegeSelect.value || null;
+      let collegeName = '';
+      if (collegeId) {
+        const selectedOpt = practiceCollegeSelect.options[practiceCollegeSelect.selectedIndex];
+        collegeName = selectedOpt ? selectedOpt.getAttribute('data-name') || selectedOpt.textContent : '';
+      }
+
+      await startPracticeSession({ nickname, collegeId, collegeName });
+    });
+  }
+
+  if (btnResetPracticeSession) {
+    btnResetPracticeSession.addEventListener('click', () => {
+      resetPracticeState();
+    });
+  }
+
+  if (btnStartNewPracticeSession) {
+    btnStartNewPracticeSession.addEventListener('click', () => {
+      resetPracticeState();
+    });
+  }
+
+  if (btnActionR1) {
+    btnActionR1.addEventListener('click', () => {
+      startRound(1);
+    });
+  }
+
+  if (btnActionR2) {
+    btnActionR2.addEventListener('click', () => {
+      startRound(2);
+    });
+  }
+
+  if (btnActionR3) {
+    btnActionR3.addEventListener('click', () => {
+      startRound(3);
+    });
+  }
+
+  if (btnActionBonus) {
+    btnActionBonus.addEventListener('click', () => {
+      startBonusQuestion();
+    });
+  }
+
+  if (btnSubmitPracticeAnswer) {
+    btnSubmitPracticeAnswer.addEventListener('click', () => {
+      handlePracticeAnswerSubmission();
+    });
+  }
+}
+
+function resetPracticeState() {
+  state.practice = {
+    sessionId: null,
+    currentRoundNumber: null,
+    currentRoundQuestions: [],
+    currentQuestionIndexInRound: 0,
+    currentRoundAnswers: [],
+    selectedOption: null,
+    isBonusActive: false,
+    bonusQuestion: null
+  };
+
+  document.getElementById('practiceStartCard').classList.remove('hidden');
+  document.getElementById('practiceDashboard').classList.add('hidden');
+  document.getElementById('practicePlayArea').classList.add('hidden');
+  document.getElementById('practiceRoundResultScreen').classList.add('hidden');
+  document.getElementById('practiceFinalSummaryScreen').classList.add('hidden');
+
+  document.getElementById('practiceTotalAttempted').textContent = '0 / 10';
+  document.getElementById('practiceRoundsCleared').textContent = '0 / 3';
+}
+
+async function startPracticeSession({ nickname, collegeId, collegeName }) {
+  try {
+    const res = await fetch('/api/practice/session/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname, collegeId, collegeName })
+    });
+
+    const data = await res.json();
+    if (!data.success) {
+      showToast(`Error: ${data.error || 'Failed to start practice session'}`);
+      return;
+    }
+
+    state.practice.sessionId = data.session.sessionId;
+    renderPracticeDashboard(data.session);
+    showToast(`Practice session initialized! Round 1 is ready.`);
+    playSound('correct');
+  } catch (err) {
+    console.error('Practice start error:', err);
+    showToast('Failed to connect to practice server.');
+  }
+}
+
+function renderPracticeDashboard(session) {
+  // Toggle Views
+  document.getElementById('practiceStartCard').classList.add('hidden');
+  document.getElementById('practiceDashboard').classList.remove('hidden');
+  document.getElementById('practicePlayArea').classList.add('hidden');
+  document.getElementById('practiceRoundResultScreen').classList.add('hidden');
+  document.getElementById('practiceFinalSummaryScreen').classList.add('hidden');
+
+  // Player strip
+  document.getElementById('practicePlayerName').textContent = session.nickname;
+  document.getElementById('practicePlayerCollege').textContent = session.collegeName ? `• ${session.collegeName}` : '• National Practice';
+  document.getElementById('practiceTotalAttempted').textContent = `${session.totalQuestionsAttempted} / ${session.maxSessionQuestions}`;
+  document.getElementById('practiceRoundsCleared').textContent = `${session.roundsCleared} / 3`;
+
+  // Update Round 1
+  const r1 = session.rounds[1];
+  const cardR1 = document.getElementById('cardRound1');
+  const bannerR1 = document.getElementById('bannerR1');
+  const btnActionR1 = document.getElementById('btnActionR1');
+  const scoreR1 = document.getElementById('scoreR1');
+  scoreR1.textContent = r1.score;
+
+  if (r1.status === 'cleared') {
+    cardR1.className = 'round-card unlocked';
+    bannerR1.className = 'round-status-banner cleared';
+    bannerR1.textContent = 'CLEARED (Passed ≥ 2/3) ✓';
+    btnActionR1.textContent = '✓ Cleared';
+    btnActionR1.disabled = true;
+    btnActionR1.className = 'btn btn-secondary btn-round-action';
+  } else if (r1.status === 'failed') {
+    cardR1.className = 'round-card unlocked';
+    bannerR1.className = 'round-status-banner failed';
+    bannerR1.textContent = 'NOT CLEARED (Score < 2/3)';
+    btnActionR1.textContent = '🔄 Retry Round 1';
+    btnActionR1.disabled = false;
+    btnActionR1.className = 'btn btn-primary btn-round-action';
+  } else {
+    cardR1.className = 'round-card unlocked';
+    bannerR1.className = 'round-status-banner not-started';
+    bannerR1.textContent = 'Ready to Start';
+    btnActionR1.textContent = '▶ Start Round 1';
+    btnActionR1.disabled = false;
+    btnActionR1.className = 'btn btn-primary btn-round-action';
+  }
+
+  // Update Round 2
+  const r2 = session.rounds[2];
+  const cardR2 = document.getElementById('cardRound2');
+  const bannerR2 = document.getElementById('bannerR2');
+  const btnActionR2 = document.getElementById('btnActionR2');
+  const lockStatusR2 = document.getElementById('lockStatusR2');
+  const scoreR2 = document.getElementById('scoreR2');
+  scoreR2.textContent = r2.score;
+
+  if (!r2.isUnlocked) {
+    cardR2.className = 'round-card locked';
+    lockStatusR2.className = 'round-lock-status locked';
+    lockStatusR2.textContent = '🔒 LOCKED';
+    bannerR2.className = 'round-status-banner locked';
+    bannerR2.textContent = 'Requires Round 1 Pass (≥ 2/3)';
+    btnActionR2.textContent = '🔒 Locked';
+    btnActionR2.disabled = true;
+    btnActionR2.className = 'btn btn-secondary btn-round-action';
+  } else {
+    cardR2.className = 'round-card unlocked';
+    lockStatusR2.className = 'round-lock-status';
+    lockStatusR2.textContent = '🔓 UNLOCKED';
+
+    if (r2.status === 'cleared') {
+      bannerR2.className = 'round-status-banner cleared';
+      bannerR2.textContent = 'CLEARED (Passed ≥ 2/3) ✓';
+      btnActionR2.textContent = '✓ Cleared';
+      btnActionR2.disabled = true;
+      btnActionR2.className = 'btn btn-secondary btn-round-action';
+    } else if (r2.status === 'failed') {
+      bannerR2.className = 'round-status-banner failed';
+      bannerR2.textContent = 'NOT CLEARED (Score < 2/3)';
+      btnActionR2.textContent = '🔄 Retry Round 2';
+      btnActionR2.disabled = false;
+      btnActionR2.className = 'btn btn-primary btn-round-action';
+    } else {
+      bannerR2.className = 'round-status-banner not-started';
+      bannerR2.textContent = 'Ready to Start';
+      btnActionR2.textContent = '▶ Start Round 2';
+      btnActionR2.disabled = false;
+      btnActionR2.className = 'btn btn-primary btn-round-action';
+    }
+  }
+
+  // Update Round 3
+  const r3 = session.rounds[3];
+  const cardR3 = document.getElementById('cardRound3');
+  const bannerR3 = document.getElementById('bannerR3');
+  const btnActionR3 = document.getElementById('btnActionR3');
+  const lockStatusR3 = document.getElementById('lockStatusR3');
+  const scoreR3 = document.getElementById('scoreR3');
+  scoreR3.textContent = r3.score;
+
+  if (!r3.isUnlocked) {
+    cardR3.className = 'round-card locked';
+    lockStatusR3.className = 'round-lock-status locked';
+    lockStatusR3.textContent = '🔒 LOCKED';
+    bannerR3.className = 'round-status-banner locked';
+    bannerR3.textContent = 'Requires Round 2 Pass (≥ 2/3)';
+    btnActionR3.textContent = '🔒 Locked';
+    btnActionR3.disabled = true;
+    btnActionR3.className = 'btn btn-secondary btn-round-action';
+  } else {
+    cardR3.className = 'round-card unlocked';
+    lockStatusR3.className = 'round-lock-status';
+    lockStatusR3.textContent = '🔓 UNLOCKED';
+
+    if (r3.status === 'cleared') {
+      bannerR3.className = 'round-status-banner cleared';
+      bannerR3.textContent = 'CLEARED (Passed ≥ 2/3) ✓';
+      btnActionR3.textContent = '✓ Cleared';
+      btnActionR3.disabled = true;
+      btnActionR3.className = 'btn btn-secondary btn-round-action';
+    } else if (r3.status === 'failed') {
+      bannerR3.className = 'round-status-banner failed';
+      bannerR3.textContent = 'NOT CLEARED (Score < 2/3)';
+      btnActionR3.textContent = '🔄 Retry Round 3';
+      btnActionR3.disabled = false;
+      btnActionR3.className = 'btn btn-primary btn-round-action';
+    } else {
+      bannerR3.className = 'round-status-banner not-started';
+      bannerR3.textContent = 'Ready to Start';
+      btnActionR3.textContent = '▶ Start Round 3';
+      btnActionR3.disabled = false;
+      btnActionR3.className = 'btn btn-primary btn-round-action';
+    }
+  }
+
+  // Update Bonus Card (Question 10)
+  const cardBonus = document.getElementById('cardBonus');
+  const bonusLockPill = document.getElementById('bonusLockPill');
+  const btnActionBonus = document.getElementById('btnActionBonus');
+  const bonusCriteriaNotice = document.getElementById('bonusCriteriaNotice');
+
+  if (session.bonus.isUnlocked) {
+    cardBonus.className = 'bonus-question-card unlocked';
+    bonusLockPill.className = 'bonus-lock-pill unlocked';
+    bonusLockPill.textContent = '🔓 UNLOCKED & READY';
+    bonusCriteriaNotice.textContent = '🎉 All 3 rounds successfully cleared! Question 10 is unlocked!';
+
+    if (session.bonus.status === 'completed') {
+      btnActionBonus.textContent = '✓ Bonus Completed';
+      btnActionBonus.disabled = true;
+      btnActionBonus.className = 'btn btn-secondary btn-round-action';
+    } else {
+      btnActionBonus.textContent = '⭐ Take Bonus Challenge (Q10)';
+      btnActionBonus.disabled = false;
+      btnActionBonus.className = 'btn btn-gold btn-round-action';
+    }
+  } else {
+    cardBonus.className = 'bonus-question-card locked';
+    bonusLockPill.className = 'bonus-lock-pill locked';
+    bonusLockPill.textContent = '🔒 STRICTLY LOCKED';
+    bonusCriteriaNotice.textContent = '⚠️ Status: Complete Rounds 1, 2, and 3 with ≥ 2/3 each to unlock.';
+    btnActionBonus.textContent = '🔒 Locked (Clear Rounds 1–3)';
+    btnActionBonus.disabled = true;
+    btnActionBonus.className = 'btn btn-secondary btn-round-action';
+  }
+}
+
+async function startRound(roundNumber) {
+  if (!state.practice.sessionId) {
+    showToast('Please start a session first.');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/practice/session/${state.practice.sessionId}/round/${roundNumber}`);
+    const data = await res.json();
+
+    if (!data.success) {
+      showToast(`⚠️ Access Denied: ${data.error}`);
+      playSound('wrong');
+      return;
+    }
+
+    state.practice.currentRoundNumber = roundNumber;
+    state.practice.currentRoundQuestions = data.questions;
+    state.practice.currentQuestionIndexInRound = 0;
+    state.practice.currentRoundAnswers = [];
+    state.practice.selectedOption = null;
+    state.practice.isBonusActive = false;
+
+    renderPracticeQuestion();
+  } catch (err) {
+    console.error('Error starting round:', err);
+    showToast('Failed to load round questions.');
+  }
+}
+
+async function startBonusQuestion() {
+  if (!state.practice.sessionId) return;
+
+  try {
+    const res = await fetch(`/api/practice/session/${state.practice.sessionId}/bonus`);
+    const data = await res.json();
+
+    if (!data.success) {
+      showToast(`⚠️ Locked: ${data.error}`);
+      playSound('wrong');
+      return;
+    }
+
+    state.practice.isBonusActive = true;
+    state.practice.bonusQuestion = data.question;
+    state.practice.selectedOption = null;
+
+    renderBonusQuestion();
+  } catch (err) {
+    console.error('Error starting bonus question:', err);
+    showToast('Failed to fetch bonus question.');
+  }
+}
+
+function renderPracticeQuestion() {
+  const roundNum = state.practice.currentRoundNumber;
+  const qList = state.practice.currentRoundQuestions;
+  const qIdx = state.practice.currentQuestionIndexInRound;
+  const currentQ = qList[qIdx];
+
+  // Display Areas
+  document.getElementById('practiceDashboard').classList.add('hidden');
+  document.getElementById('practiceRoundResultScreen').classList.add('hidden');
+  document.getElementById('practiceFinalSummaryScreen').classList.add('hidden');
+  document.getElementById('practicePlayArea').classList.remove('hidden');
+
+  // Indicators
+  document.getElementById('playRoundBadge').textContent = `Round ${roundNum} of 3`;
+  document.getElementById('playQuestionNum').textContent = `Question ${qIdx + 1} of 3`;
+  
+  // Calculate session total index
+  const sessionQuestionOffset = (roundNum - 1) * 3 + (qIdx + 1);
+  document.getElementById('playSessionStep').textContent = `Session Total: ${sessionQuestionOffset} / 10`;
+
+  const diffNames = { 1: 'Medium', 2: 'Difficult', 3: 'Very Difficult' };
+  document.getElementById('playDifficultyBadge').textContent = `Difficulty: ${diffNames[roundNum] || 'Adaptive'}`;
+
+  // Progress bar
+  const pct = Math.round(((qIdx + 1) / 3) * 100);
+  document.getElementById('practiceProgressFill').style.width = `${pct}%`;
+
+  // Question Content
+  document.getElementById('practiceQuestionTopic').textContent = currentQ.topic || 'Aptitude';
+  document.getElementById('practiceQuestionPrompt').textContent = currentQ.prompt;
+
+  // Options
+  state.practice.selectedOption = null;
+  const optionsGrid = document.getElementById('practiceOptionsGrid');
+  optionsGrid.innerHTML = currentQ.options.map(opt => `
+    <button type="button" class="practice-opt-btn" data-key="${opt.key}">
+      <span class="practice-opt-key">${opt.key}</span>
+      <span class="practice-opt-text">${opt.text}</span>
+    </button>
+  `).join('');
+
+  document.getElementById('practiceSelectedStatus').textContent = 'Please select an option to submit.';
+  const btnSubmit = document.getElementById('btnSubmitPracticeAnswer');
+  btnSubmit.disabled = true;
+  btnSubmit.textContent = (qIdx === 2) ? 'Submit Round for Evaluation ➔' : 'Submit Answer ➔';
+
+  // Attach selection handlers
+  const optBtns = optionsGrid.querySelectorAll('.practice-opt-btn');
+  optBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      optBtns.forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      state.practice.selectedOption = btn.getAttribute('data-key');
+      btnSubmit.disabled = false;
+      document.getElementById('practiceSelectedStatus').textContent = `Selected: Option ${state.practice.selectedOption}`;
+      playSound('tick');
+    });
+  });
+}
+
+function renderBonusQuestion() {
+  const currentQ = state.practice.bonusQuestion;
+
+  document.getElementById('practiceDashboard').classList.add('hidden');
+  document.getElementById('practiceRoundResultScreen').classList.add('hidden');
+  document.getElementById('practiceFinalSummaryScreen').classList.add('hidden');
+  document.getElementById('practicePlayArea').classList.remove('hidden');
+
+  document.getElementById('playRoundBadge').textContent = `Final Bonus Round`;
+  document.getElementById('playQuestionNum').textContent = `Question 10 of 10`;
+  document.getElementById('playSessionStep').textContent = `Session Total: 10 / 10`;
+  document.getElementById('playDifficultyBadge').textContent = `Difficulty: Expert Level`;
+  document.getElementById('practiceProgressFill').style.width = `100%`;
+
+  document.getElementById('practiceQuestionTopic').textContent = currentQ.topic || 'Expert Aptitude';
+  document.getElementById('practiceQuestionPrompt').textContent = currentQ.prompt;
+
+  state.practice.selectedOption = null;
+  const optionsGrid = document.getElementById('practiceOptionsGrid');
+  optionsGrid.innerHTML = currentQ.options.map(opt => `
+    <button type="button" class="practice-opt-btn" data-key="${opt.key}">
+      <span class="practice-opt-key">${opt.key}</span>
+      <span class="practice-opt-text">${opt.text}</span>
+    </button>
+  `).join('');
+
+  document.getElementById('practiceSelectedStatus').textContent = 'Please select an option for the final bonus challenge.';
+  const btnSubmit = document.getElementById('btnSubmitPracticeAnswer');
+  btnSubmit.disabled = true;
+  btnSubmit.textContent = 'Finalize Practice Session ➔';
+
+  const optBtns = optionsGrid.querySelectorAll('.practice-opt-btn');
+  optBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      optBtns.forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      state.practice.selectedOption = btn.getAttribute('data-key');
+      btnSubmit.disabled = false;
+      document.getElementById('practiceSelectedStatus').textContent = `Selected: Option ${state.practice.selectedOption}`;
+      playSound('tick');
+    });
+  });
+}
+
+async function handlePracticeAnswerSubmission() {
+  if (!state.practice.selectedOption) {
+    showToast('Please select an option first.');
+    return;
+  }
+
+  // Case A: Final Bonus Question submission
+  if (state.practice.isBonusActive) {
+    try {
+      const res = await fetch(`/api/practice/session/${state.practice.sessionId}/bonus/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chosenOption: state.practice.selectedOption })
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        showToast(data.error || 'Failed to submit bonus answer.');
+        return;
+      }
+
+      if (data.isCorrect) {
+        playSound('correct');
+        showToast('🎯 Outstanding! Bonus Question answered correctly!');
+      } else {
+        playSound('wrong');
+        showToast('❌ Bonus question was incorrect.');
+      }
+
+      // Show final performance summary screen!
+      renderFinalPerformanceSummary(data.summary);
+    } catch (err) {
+      console.error(err);
+      showToast('Error submitting bonus question.');
+    }
+    return;
+  }
+
+  // Case B: Standard Round Question
+  const qList = state.practice.currentRoundQuestions;
+  const qIdx = state.practice.currentQuestionIndexInRound;
+  const currentQ = qList[qIdx];
+
+  // Record answer
+  state.practice.currentRoundAnswers.push({
+    questionId: currentQ.id,
+    chosenOption: state.practice.selectedOption
+  });
+
+  if (qIdx < 2) {
+    // Proceed to next question in this round
+    state.practice.currentQuestionIndexInRound += 1;
+    renderPracticeQuestion();
+  } else {
+    // End of 3 questions in this round -> Submit to backend for authoritative validation
+    await submitRoundForBackendEvaluation();
+  }
+}
+
+async function submitRoundForBackendEvaluation() {
+  const roundNum = state.practice.currentRoundNumber;
+  const answers = state.practice.currentRoundAnswers;
+
+  try {
+    const res = await fetch(`/api/practice/session/${state.practice.sessionId}/round/${roundNum}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers })
+    });
+
+    const data = await res.json();
+    if (!data.success) {
+      showToast(`Error: ${data.error || 'Failed to evaluate round'}`);
+      return;
+    }
+
+    renderRoundResultScreen(data);
+  } catch (err) {
+    console.error('Round submission error:', err);
+    showToast('Failed to connect to round evaluation service.');
+  }
+}
+
+function renderRoundResultScreen(result) {
+  document.getElementById('practicePlayArea').classList.add('hidden');
+  document.getElementById('practiceRoundResultScreen').classList.remove('hidden');
+
+  const badge = document.getElementById('roundResultBadge');
+  const title = document.getElementById('roundResultTitle');
+  const scoreVal = document.getElementById('roundResultScoreVal');
+  const verdict = document.getElementById('roundResultVerdict');
+  const solutionsList = document.getElementById('roundSolutionsList');
+  const actionsContainer = document.getElementById('roundResultActions');
+
+  title.textContent = `${result.roundName} Results`;
+  scoreVal.textContent = result.score;
+
+  if (result.passed) {
+    badge.className = 'result-status-badge cleared';
+    badge.textContent = 'ROUND CLEARED! 🎉';
+    verdict.textContent = `CLEARED (Passed with ${result.score} ≥ 2/3)`;
+    verdict.style.color = 'var(--accent-green)';
+    playSound('correct');
+
+    if (typeof confetti === 'function') {
+      confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
+    }
+  } else {
+    badge.className = 'result-status-badge failed';
+    badge.textContent = 'ROUND NOT CLEARED ❌';
+    verdict.textContent = `FAILED (${result.score} - Required: at least 2/3 correct)`;
+    verdict.style.color = 'var(--accent-red)';
+    playSound('wrong');
+  }
+
+  // Render Detailed Question Explanations & Correct/Incorrect answers
+  solutionsList.innerHTML = (result.evaluatedQuestions || []).map((q, idx) => `
+    <div class="solution-card-item ${q.isCorrect ? 'correct' : 'incorrect'}">
+      <div class="solution-q-header">
+        <span>Question ${idx + 1} • ${q.topic}</span>
+        <span style="color: ${q.isCorrect ? 'var(--accent-green)' : 'var(--accent-red)'}; font-weight: 800;">
+          ${q.isCorrect ? '✓ CORRECT' : '✗ INCORRECT'}
+        </span>
+      </div>
+      <div class="solution-q-prompt">${q.prompt}</div>
+      <div class="solution-answers-row">
+        <div>Your Answer: <strong>Option ${q.chosenOption}</strong> (${q.options[q.chosenOption] || ''})</div>
+        <div>Correct Answer: <strong style="color: var(--accent-green);">Option ${q.correctOption}</strong> (${q.options[q.correctOption] || ''})</div>
+      </div>
+      <div class="solution-explanation-box">
+        <strong>Explanation:</strong> ${q.explanation}
+      </div>
+    </div>
+  `).join('');
+
+  // Setup Result Actions
+  let actionButtonsHtml = '';
+
+  if (result.passed) {
+    if (result.nextRoundUnlocked) {
+      actionButtonsHtml += `
+        <button type="button" class="btn btn-primary btn-glow" id="btnContinueNextRound">
+          Proceed to Round ${result.nextRoundNumber} ➔
+        </button>
+      `;
+    } else if (result.roundNumber === 3) {
+      // All 3 cleared! Unlock bonus
+      actionButtonsHtml += `
+        <button type="button" class="btn btn-gold btn-glow" id="btnProceedToBonus">
+          👑 Unlock Question 10 Bonus Challenge ➔
+        </button>
+      `;
+    }
+    actionButtonsHtml += `
+      <button type="button" class="btn btn-secondary" id="btnReturnToPracticeHub">
+        View Practice Hub Dashboard
+      </button>
+    `;
+  } else {
+    // Failed round: Allow retry if retries enabled and session limit not exceeded
+    if (result.canRetry) {
+      actionButtonsHtml += `
+        <button type="button" class="btn btn-primary" id="btnRetryFailedRound">
+          🔄 Retry Round ${result.roundNumber}
+        </button>
+      `;
+    }
+    actionButtonsHtml += `
+      <button type="button" class="btn btn-secondary" id="btnReturnToPracticeHub">
+        Return to Dashboard
+      </button>
+      <button type="button" class="btn btn-secondary" id="btnViewSessionSummary">
+        End Session & View Summary
+      </button>
+    `;
+  }
+
+  actionsContainer.innerHTML = actionButtonsHtml;
+
+  // Event Listeners for actions
+  const btnContinue = document.getElementById('btnContinueNextRound');
+  if (btnContinue) {
+    btnContinue.addEventListener('click', () => {
+      startRound(result.nextRoundNumber);
+    });
+  }
+
+  const btnBonus = document.getElementById('btnProceedToBonus');
+  if (btnBonus) {
+    btnBonus.addEventListener('click', () => {
+      startBonusQuestion();
+    });
+  }
+
+  const btnRetry = document.getElementById('btnRetryFailedRound');
+  if (btnRetry) {
+    btnRetry.addEventListener('click', async () => {
+      await retryRound(result.roundNumber);
+    });
+  }
+
+  const btnHub = document.getElementById('btnReturnToPracticeHub');
+  if (btnHub) {
+    btnHub.addEventListener('click', async () => {
+      await refreshPracticeDashboard();
+    });
+  }
+
+  const btnSummary = document.getElementById('btnViewSessionSummary');
+  if (btnSummary) {
+    btnSummary.addEventListener('click', async () => {
+      await fetchAndDisplaySummary();
+    });
+  }
+}
+
+async function retryRound(roundNumber) {
+  try {
+    const res = await fetch(`/api/practice/session/${state.practice.sessionId}/round/${roundNumber}/retry`, {
+      method: 'POST'
+    });
+    const data = await res.json();
+    if (!data.success) {
+      showToast(data.error || 'Cannot retry round.');
+      return;
+    }
+
+    state.practice.currentRoundNumber = roundNumber;
+    state.practice.currentRoundQuestions = data.questions;
+    state.practice.currentQuestionIndexInRound = 0;
+    state.practice.currentRoundAnswers = [];
+    state.practice.selectedOption = null;
+
+    renderPracticeQuestion();
+    showToast(`Retrying Round ${roundNumber}!`);
+  } catch (err) {
+    console.error('Retry error:', err);
+    showToast('Failed to retry round.');
+  }
+}
+
+async function refreshPracticeDashboard() {
+  try {
+    const res = await fetch(`/api/practice/session/${state.practice.sessionId}`);
+    const data = await res.json();
+    if (data.success && data.session) {
+      renderPracticeDashboard(data.session);
+    }
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+async function fetchAndDisplaySummary() {
+  try {
+    const res = await fetch(`/api/practice/session/${state.practice.sessionId}/summary`);
+    const data = await res.json();
+    if (data.success && data.summary) {
+      renderFinalPerformanceSummary(data.summary);
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to fetch session summary.');
+  }
+}
+
+function renderFinalPerformanceSummary(summary) {
+  document.getElementById('practiceDashboard').classList.add('hidden');
+  document.getElementById('practicePlayArea').classList.add('hidden');
+  document.getElementById('practiceRoundResultScreen').classList.add('hidden');
+  document.getElementById('practiceFinalSummaryScreen').classList.remove('hidden');
+
+  document.getElementById('sumTotalAttempted').textContent = `${summary.totalQuestionsAttempted} / 10`;
+  document.getElementById('sumTotalCorrect').textContent = summary.totalCorrectAnswers;
+  document.getElementById('sumAccuracy').textContent = `${summary.accuracyPercentage}%`;
+  document.getElementById('sumRoundsCleared').textContent = `${summary.roundsCleared} / 3`;
+  document.getElementById('sumBonusResult').textContent = summary.bonusResult;
+
+  const tableBody = document.getElementById('summaryTableBody');
+  tableBody.innerHTML = (summary.roundDetails || []).map(r => `
+    <tr>
+      <td><strong>Round ${r.roundNumber}</strong></td>
+      <td><span class="badge ${r.roundNumber === 1 ? 'badge-medium' : r.roundNumber === 2 ? 'badge-hard' : 'badge-very-hard'}">${r.difficulty}</span></td>
+      <td><strong>${r.score}</strong></td>
+      <td>
+        <span class="badge ${r.passed ? 'badge-success' : 'badge-danger'}">
+          ${r.passed ? 'Passed (≥ 2/3)' : 'Not Cleared (< 2/3)'}
+        </span>
+      </td>
+      <td>${r.status.toUpperCase()}</td>
+    </tr>
+  `).join('');
+
+  if (summary.bonusAttempted) {
+    tableBody.innerHTML += `
+      <tr style="background: rgba(245, 158, 11, 0.08);">
+        <td><strong>Question 10 (Bonus)</strong></td>
+        <td><span class="badge badge-very-hard">Expert</span></td>
+        <td><strong>${summary.bonusResult === 'Correct' ? '1/1' : '0/1'}</strong></td>
+        <td><span class="badge ${summary.bonusResult === 'Correct' ? 'badge-success' : 'badge-danger'}">${summary.bonusResult}</span></td>
+        <td>COMPLETED</td>
+      </tr>
+    `;
+  }
+
+  showToast('Performance summary generated.');
+}
+

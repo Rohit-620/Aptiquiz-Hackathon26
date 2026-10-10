@@ -228,3 +228,38 @@ CREATE TABLE IF NOT EXISTS suspicious_activity_logs (
     ip_address VARCHAR(50) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 17. Practice Sessions (Multi-Round Adaptive Practice System)
+CREATE TABLE IF NOT EXISTS practice_sessions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    session_id VARCHAR(64) NOT NULL UNIQUE,
+    nickname VARCHAR(100) NOT NULL,
+    college_id INT NULL,
+    status ENUM('active', 'completed', 'abandoned') DEFAULT 'active',
+    total_questions_attempted INT DEFAULT 0,
+    total_correct_answers INT DEFAULT 0,
+    max_questions INT DEFAULT 10,
+    rounds_cleared INT DEFAULT 0,
+    bonus_unlocked BOOLEAN DEFAULT FALSE,
+    bonus_attempted BOOLEAN DEFAULT FALSE,
+    bonus_correct BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (college_id) REFERENCES colleges(id) ON DELETE SET NULL,
+    INDEX idx_practice_session (session_id)
+);
+
+-- 18. Practice Round Attempts
+CREATE TABLE IF NOT EXISTS practice_round_attempts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    session_id VARCHAR(64) NOT NULL,
+    round_number INT NOT NULL,
+    difficulty VARCHAR(50) NOT NULL,
+    score INT NOT NULL,
+    target_count INT DEFAULT 3,
+    passed BOOLEAN NOT NULL,
+    attempt_number INT DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES practice_sessions(session_id) ON DELETE CASCADE
+);
+

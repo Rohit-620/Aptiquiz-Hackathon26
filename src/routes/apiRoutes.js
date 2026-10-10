@@ -9,6 +9,7 @@ const QRCode = require('qrcode');
 const { aggregateCollegeRankings } = require('../services/scoringService');
 const aiService = require('../services/aiService');
 const roomManager = require('../services/roomManager');
+const practiceService = require('../services/practiceService');
 
 const os = require('os');
 
@@ -245,6 +246,121 @@ router.get('/health', (req, res) => {
     dbEngine: db.getIsMock() ? 'in-memory-persistence-store' : 'mysql-live-pool',
     timestamp: new Date().toISOString()
   });
+});
+
+/* ==========================================================================
+   AptiQuiz Multi-Round Adaptive Practice Quiz Endpoints
+   ========================================================================== */
+
+// Start a new 10-question practice session
+router.post('/practice/session/start', async (req, res) => {
+  try {
+    const { nickname, collegeId, collegeName } = req.body;
+    const session = await practiceService.createSession({ nickname, collegeId, collegeName });
+    res.json({ success: true, session });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get session state
+router.get('/practice/session/:sessionId', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const session = practiceService.getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ success: false, error: 'Session not found.' });
+    }
+    res.json({ success: true, session: practiceService.sanitizeSessionView(session) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Start or get questions for a specific round (1, 2, or 3)
+router.get('/practice/session/:sessionId/round/:roundNumber', async (req, res) => {
+  try {
+    const { sessionId, roundNumber } = req.params;
+    const result = await practiceService.getOrStartRound(sessionId, roundNumber);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Submit answers for a round (evaluated on backend)
+router.post('/practice/session/:sessionId/round/:roundNumber/submit', async (req, res) => {
+  try {
+    const { sessionId, roundNumber } = req.params;
+    const { answers } = req.body;
+    const result = await practiceService.submitRoundAnswers(sessionId, roundNumber, answers);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Retry a failed round
+router.post('/practice/session/:sessionId/round/:roundNumber/retry', async (req, res) => {
+  try {
+    const { sessionId, roundNumber } = req.params;
+    const result = await practiceService.retryRound(sessionId, roundNumber);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get Final Bonus Question (Question 10) - strictly locked until all 3 rounds cleared
+router.get('/practice/session/:sessionId/bonus', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const result = await practiceService.getBonusQuestion(sessionId);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Submit answer for Bonus Question
+router.post('/practice/session/:sessionId/bonus/submit', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { chosenOption } = req.body;
+    const result = await practiceService.submitBonusAnswer(sessionId, chosenOption);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Overall session performance summary
+router.get('/practice/session/:sessionId/summary', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const summary = practiceService.getSummary(sessionId);
+    if (!summary) {
+      return res.status(404).json({ success: false, error: 'Session summary not found.' });
+    }
+    res.json({ success: true, summary });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 module.exports = router;
