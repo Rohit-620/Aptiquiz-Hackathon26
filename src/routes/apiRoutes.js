@@ -5,9 +5,30 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const QRCode = require('qrcode');
 const { aggregateCollegeRankings } = require('../services/scoringService');
 const aiService = require('../services/aiService');
 const roomManager = require('../services/roomManager');
+
+// QR Code Generator for mobile join
+router.get('/qrcode/:roomCode', async (req, res) => {
+  try {
+    const { roomCode } = req.params;
+    const origin = req.protocol + '://' + req.get('host');
+    const joinUrl = `${origin}/?room=${encodeURIComponent(roomCode.toUpperCase())}`;
+    const qrDataUrl = await QRCode.toDataURL(joinUrl, {
+      width: 250,
+      margin: 2,
+      color: {
+        dark: '#00f2fe',
+        light: '#0b0f19'
+      }
+    });
+    res.json({ success: true, qrDataUrl, joinUrl });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // 1. Colleges List
 router.get('/colleges', async (req, res) => {

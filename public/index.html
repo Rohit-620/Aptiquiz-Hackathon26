@@ -8,6 +8,10 @@
   <link rel="stylesheet" href="/css/style.css">
   <!-- Chart.js for analytics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- HTML5 QR Code Scanner -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <!-- Canvas Confetti for spectacular victory effect -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
   <!-- Socket.IO Client -->
   <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -31,9 +35,12 @@
       <button class="nav-btn" data-tab="daily-tab">🔥 Daily Challenge</button>
     </nav>
 
-    <div class="user-badge" id="headerUserBadge">
-      <span class="user-avatar">👤</span>
-      <span class="user-name" id="navNickname">Guest Player</span>
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+      <button class="sound-toggle-btn" id="btnToggleSound" title="Toggle Sound FX">🔊 Sound ON</button>
+      <div class="user-badge" id="headerUserBadge">
+        <span class="user-avatar">👤</span>
+        <span class="user-name" id="navNickname">Guest Player</span>
+      </div>
     </div>
   </header>
 
@@ -53,8 +60,20 @@
 
         <form id="joinForm" class="join-form">
           <div class="form-group">
-            <label for="roomCodeInput">Room Code</label>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <label for="roomCodeInput">Room Code</label>
+              <button type="button" class="btn-text-scanner" id="btnOpenScanner">📷 Scan QR Code</button>
+            </div>
             <input type="text" id="roomCodeInput" placeholder="e.g. 8K2M9Q" maxlength="10" required autocomplete="off">
+          </div>
+
+          <!-- Camera QR Scanner Modal/Box -->
+          <div id="qrScannerBox" class="scanner-box hidden">
+            <div class="scanner-header">
+              <span>📷 Point Camera at Host QR Code</span>
+              <button type="button" class="btn-close-scanner" id="btnCloseScanner">✕</button>
+            </div>
+            <div id="qrReader" style="width: 100%;"></div>
           </div>
 
           <div class="form-group">
@@ -87,9 +106,23 @@
           <div>
             <span class="badge badge-live">LIVE LOBBY</span>
             <h2>Room Code: <span id="displayRoomCode" class="room-code-badge">------</span></h2>
-            <p>Share this code with up to 50 players to join the synchronized match!</p>
+            <p>Players can scan the QR code with phone camera to join instantly!</p>
           </div>
-          <button class="btn btn-outline" id="btnCopyRoomCode">📋 Copy Code</button>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-outline" id="btnToggleQR">📱 Show QR Code</button>
+            <button class="btn btn-outline" id="btnCopyRoomCode">📋 Copy Code</button>
+          </div>
+        </div>
+
+        <!-- Lobby QR Code Card -->
+        <div id="lobbyQRContainer" class="lobby-qr-card">
+          <div class="qr-glow-wrapper">
+            <img id="lobbyQRImage" src="" alt="Room QR Code" class="qr-image">
+          </div>
+          <div class="qr-instruction">
+            <strong>Scan to Join on Mobile</strong>
+            <p>Scan with any camera or the built-in scanner to auto-fill room code!</p>
+          </div>
         </div>
 
         <div class="lobby-stats">
@@ -137,9 +170,12 @@
             </div>
           </div>
 
-          <div class="player-live-score">
-            <span class="score-label">Your Score:</span>
-            <span id="playerCurrentScore" class="score-value">0</span>
+          <div class="player-live-stats">
+            <div class="live-streak-badge" id="playerStreakBadge">🔥 Streak: <span id="streakCount">0</span></div>
+            <div class="player-live-score">
+              <span class="score-label">Score:</span>
+              <span id="playerCurrentScore" class="score-value">0</span>
+            </div>
           </div>
         </div>
 

@@ -585,6 +585,155 @@ body {
   display: none !important;
 }
 
+/* ==========================================================================
+   Advanced Esports UI & Scanner Styles
+   ========================================================================== */
+
+/* Sound Toggle */
+.sound-toggle-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--accent-cyan);
+  padding: 0.35rem 0.75rem;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+  transition: all 0.2s ease;
+}
+
+.sound-toggle-btn:hover {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.3);
+}
+
+/* Scanner Button & Box */
+.btn-text-scanner {
+  background: transparent;
+  border: none;
+  color: var(--accent-cyan);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: color 0.2s;
+}
+
+.btn-text-scanner:hover {
+  color: #fff;
+  text-shadow: 0 0 8px var(--accent-cyan);
+}
+
+.scanner-box {
+  background: var(--bg-card);
+  border: 2px solid var(--accent-cyan);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 0 20px rgba(0, 242, 254, 0.25);
+  animation: fadeIn 0.3s ease;
+}
+
+.scanner-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  font-size: 0.9rem;
+}
+
+.btn-close-scanner {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.btn-close-scanner:hover {
+  color: var(--accent-red);
+}
+
+/* Lobby QR Code Card */
+.lobby-qr-card {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.05), rgba(79, 172, 254, 0.05));
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  padding: 1.5rem;
+  border-radius: 12px;
+  margin-bottom: 2rem;
+  animation: fadeIn 0.4s ease;
+}
+
+.qr-glow-wrapper {
+  background: #0b0f19;
+  padding: 0.75rem;
+  border-radius: 12px;
+  border: 2px solid var(--accent-cyan);
+  box-shadow: 0 0 20px rgba(0, 242, 254, 0.35);
+}
+
+.qr-image {
+  width: 140px;
+  height: 140px;
+  display: block;
+  border-radius: 6px;
+}
+
+.qr-instruction {
+  flex: 1;
+}
+
+.qr-instruction strong {
+  font-size: 1.2rem;
+  color: var(--accent-cyan);
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.qr-instruction p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+/* Live Streak Indicator */
+.player-live-stats {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.live-streak-badge {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(239, 68, 68, 0.2));
+  border: 1px solid var(--accent-amber);
+  color: var(--accent-amber);
+  font-weight: 800;
+  font-size: 0.9rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 20px;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+}
+
+/* Cyber Pulse Keyframes */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(0, 242, 254, 0.5); }
+  70% { box-shadow: 0 0 0 10px rgba(0, 242, 254, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 242, 254, 0); }
+}
+
 /* Responsiveness */
 @media (max-width: 768px) {
   .options-grid {
@@ -596,5 +745,9 @@ body {
   }
   .tournament-bracket {
     flex-direction: column;
+  }
+  .lobby-qr-card {
+    flex-direction: column;
+    text-align: center;
   }
 }

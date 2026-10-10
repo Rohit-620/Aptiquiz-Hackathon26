@@ -19,10 +19,69 @@ const state = {
   currentQuestionIndex: -1,
   totalQuestions: 8,
   score: 0,
+  streak: 0,
+  soundEnabled: true,
   hasAnswered: false,
   timerInterval: null,
-  sessionToken: localStorage.getItem('aptiquiz_session_token') || null
+  sessionToken: localStorage.getItem('aptiquiz_session_token') || null,
+  html5QrCode: null
 };
+
+// Web Audio API Sound Effects Synthesizer (No external mp3 assets needed)
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSound(type) {
+  if (!state.soundEnabled) return;
+  try {
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+
+    if (type === 'correct') {
+      // High cheerful ascending chime
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(523.25, now); // C5
+      osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.15); // G5
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+      osc.start(now);
+      osc.stop(now + 0.35);
+    } else if (type === 'wrong') {
+      // Low buzz
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(180, now);
+      osc.frequency.linearRampToValueAtTime(110, now + 0.25);
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+      osc.start(now);
+      osc.stop(now + 0.3);
+    } else if (type === 'tick') {
+      // Clock tick
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800, now);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+      osc.start(now);
+      osc.stop(now + 0.05);
+    } else if (type === 'countdown') {
+      // Round start beep
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, now);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+      osc.start(now);
+      osc.stop(now + 0.15);
+    }
+  } catch (e) {
+    console.warn('Audio error:', e);
+  }
+}
 
 // DOM Elements
 const elements = {
@@ -31,8 +90,9 @@ const elements = {
   tabPanes: document.querySelectorAll('.tab-pane'),
   navNickname: document.getElementById('navNickname'),
   toast: document.getElementById('toast'),
+  btnToggleSound: document.getElementById('btnToggleSound'),
 
-  // Arena Views
+  // QR Scanner & Arena Form
   joinContainer: document.getElementById('joinContainer'),
   joinForm: document.getElementById('joinForm'),
   roomCodeInput: document.getElementById('roomCodeInput'),
@@ -41,22 +101,29 @@ const elements = {
   teamInput: document.getElementById('teamInput'),
   btnJoinRoom: document.getElementById('btnJoinRoom'),
   btnJoinSpectator: document.getElementById('btnJoinSpectator'),
+  btnOpenScanner: document.getElementById('btnOpenScanner'),
+  btnCloseScanner: document.getElementById('btnCloseScanner'),
+  qrScannerBox: document.getElementById('qrScannerBox'),
 
-  // Lobby
+  // Lobby & QR code
   lobbyContainer: document.getElementById('lobbyContainer'),
   displayRoomCode: document.getElementById('displayRoomCode'),
   btnCopyRoomCode: document.getElementById('btnCopyRoomCode'),
+  btnToggleQR: document.getElementById('btnToggleQR'),
+  lobbyQRContainer: document.getElementById('lobbyQRContainer'),
+  lobbyQRImage: document.getElementById('lobbyQRImage'),
   lobbyPlayerCount: document.getElementById('lobbyPlayerCount'),
   lobbyPlayersList: document.getElementById('lobbyPlayersList'),
   hostLobbyControls: document.getElementById('hostLobbyControls'),
   btnStartGame: document.getElementById('btnStartGame'),
   playerWaitingNotice: document.getElementById('playerWaitingNotice'),
 
-  // Live Arena
+  // Live Arena & Streaks
   liveArenaContainer: document.getElementById('liveArenaContainer'),
   qCurrentNum: document.getElementById('qCurrentNum'),
   qTotalNum: document.getElementById('qTotalNum'),
   timerSeconds: document.getElementById('timerSeconds'),
+  streakCount: document.getElementById('streakCount'),
   playerCurrentScore: document.getElementById('playerCurrentScore'),
   questionTopic: document.getElementById('questionTopic'),
   questionPrompt: document.getElementById('questionPrompt'),
@@ -124,6 +191,8 @@ const elements = {
 
 document.addEventListener('DOMContentLoaded', () => {
   setupNavigation();
+  setupAudioToggle();
+  setupQRScanner();
   loadColleges();
   loadCollegeLeague();
   loadTournaments();
@@ -135,8 +204,62 @@ document.addEventListener('DOMContentLoaded', () => {
   const codeParam = urlParams.get('room');
   if (codeParam) {
     elements.roomCodeInput.value = codeParam.toUpperCase();
+    showToast(`Room code ${codeParam.toUpperCase()} detected and pre-filled!`);
   }
 });
+
+function setupAudioToggle() {
+  elements.btnToggleSound.addEventListener('click', () => {
+    state.soundEnabled = !state.soundEnabled;
+    elements.btnToggleSound.textContent = state.soundEnabled ? '🔊 Sound ON' : '🔇 Sound OFF';
+    showToast(state.soundEnabled ? 'Audio Sound FX Enabled' : 'Audio Sound FX Muted');
+  });
+}
+
+function setupQRScanner() {
+  elements.btnOpenScanner.addEventListener('click', async () => {
+    elements.qrScannerBox.classList.remove('hidden');
+    try {
+      state.html5QrCode = new Html5Qrcode('qrReader');
+      await state.html5QrCode.start(
+        { facingMode: 'environment' },
+        {
+          fps: 10,
+          qrbox: { width: 220, height: 220 }
+        },
+        (decodedText) => {
+          // Success callback: parse URL or raw room code
+          let parsedCode = decodedText.trim();
+          if (decodedText.includes('room=')) {
+            const urlObj = new URL(decodedText);
+            parsedCode = urlObj.searchParams.get('room') || decodedText;
+          }
+          elements.roomCodeInput.value = parsedCode.toUpperCase();
+          showToast(`QR Code Scanned: Room ${parsedCode.toUpperCase()}!`);
+          stopScanner();
+        },
+        (errorMessage) => {
+          // ignore scan error frames
+        }
+      );
+    } catch (err) {
+      console.warn('Camera access error:', err);
+      showToast('Camera permission denied or camera not found.');
+    }
+  });
+
+  elements.btnCloseScanner.addEventListener('click', stopScanner);
+}
+
+function stopScanner() {
+  if (state.html5QrCode) {
+    state.html5QrCode.stop().then(() => {
+      state.html5QrCode.clear();
+      state.html5QrCode = null;
+    }).catch(err => console.error(err));
+  }
+  elements.qrScannerBox.classList.add('hidden');
+}
 
 function setupNavigation() {
   elements.navBtns.forEach(btn => {
@@ -280,6 +403,7 @@ function handleJoinResponse(res) {
   elements.displayRoomCode.textContent = res.roomCode;
 
   updateLobbyUI(res.players);
+  fetchRoomQRCode(res.roomCode);
 
   if (state.isHost) {
     elements.hostLobbyControls.classList.remove('hidden');
@@ -291,6 +415,22 @@ function handleJoinResponse(res) {
 
   showToast(`Successfully entered Room ${res.roomCode}`);
 }
+
+async function fetchRoomQRCode(roomCode) {
+  try {
+    const res = await fetch(`/api/qrcode/${roomCode}`);
+    const data = await res.json();
+    if (data.success && data.qrDataUrl) {
+      elements.lobbyQRImage.src = data.qrDataUrl;
+    }
+  } catch (err) {
+    console.error('Failed to load room QR code', err);
+  }
+}
+
+elements.btnToggleQR.addEventListener('click', () => {
+  elements.lobbyQRContainer.classList.toggle('hidden');
+});
 
 elements.btnCopyRoomCode.addEventListener('click', () => {
   if (state.roomCode) {
@@ -417,7 +557,17 @@ elements.optionBtns.forEach(btn => {
       if (res.success) {
         state.score = res.totalScore;
         elements.playerCurrentScore.textContent = state.score;
-        showToast(res.isCorrect ? `Correct! +${res.pointsAwarded} pts` : 'Incorrect. 0 pts');
+
+        if (res.isCorrect) {
+          state.streak += 1;
+          playSound('correct');
+          showToast(`Correct! +${res.pointsAwarded} pts 🔥 Streak: ${state.streak}`);
+        } else {
+          state.streak = 0;
+          playSound('wrong');
+          showToast('Incorrect. 0 pts');
+        }
+        elements.streakCount.textContent = state.streak;
       } else {
         showToast(`Submission rejected: ${res.error}`);
       }
@@ -434,6 +584,7 @@ elements.btnPowerup5050.addEventListener('click', () => {
         if (btn) btn.classList.add('eliminated');
       });
       elements.btnPowerup5050.disabled = true;
+      playSound('correct');
       showToast('50:50 Activated: Two incorrect options eliminated!');
     } else {
       showToast(res.error || 'Power-up unavailable.');
@@ -443,6 +594,7 @@ elements.btnPowerup5050.addEventListener('click', () => {
 
 elements.btnPowerupDouble.addEventListener('click', () => {
   elements.btnPowerupDouble.disabled = true;
+  playSound('correct');
   showToast('2x Points primed for this round!');
 });
 
@@ -459,6 +611,7 @@ socket.on('room:playerLeft', (data) => {
 });
 
 socket.on('game:startingCountdown', (data) => {
+  playSound('countdown');
   showToast(`Match starting in ${data.countdownSec} seconds! Get ready!`);
 });
 
@@ -470,6 +623,7 @@ socket.on('question:start', (data) => {
 
   state.currentQuestionIndex = data.questionIndex;
   state.hasAnswered = false;
+  playSound('countdown');
 
   // Reset UI
   elements.qCurrentNum.textContent = data.questionIndex + 1;
@@ -498,6 +652,9 @@ function startCountdownTimer(seconds) {
 
   state.timerInterval = setInterval(() => {
     remaining -= 1;
+    if (remaining <= 5 && remaining > 0) {
+      playSound('tick');
+    }
     if (remaining < 0) {
       clearInterval(state.timerInterval);
       elements.timerSeconds.textContent = '0';
@@ -542,6 +699,15 @@ socket.on('game:finished', (data) => {
   clearInterval(state.timerInterval);
   elements.liveArenaContainer.classList.add('hidden');
   elements.finalResultsContainer.classList.remove('hidden');
+
+  // Trigger celebration confetti
+  if (typeof confetti === 'function') {
+    confetti({
+      particleCount: 120,
+      spread: 70,
+      origin: { y: 0.6 }
+    });
+  }
 
   if (data.winner) {
     elements.winnerPodium.innerHTML = `
